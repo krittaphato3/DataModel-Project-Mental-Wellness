@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = '/api';
+const API_BASE = '/_/backend';
 
 export const predict = async (formData) => {
   const response = await axios.post(`${API_BASE}/predict`, formData);
