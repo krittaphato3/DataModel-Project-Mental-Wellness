@@ -1,13 +1,12 @@
 {
   "version": 2,
-  "buildCommand": "npm --prefix frontend install && npm --prefix frontend run build",
+  "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
-  "installCommand": "",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/backend/app.py" }
+    { "source": "/api/(.*)", "destination": "/api/app" }
   ],
   "functions": {
-    "backend/app.py": {
+    "api/app.py": {
       "runtime": "python@3.12",
       "maxDuration": 30,
       "includeFiles": "backend/**"
