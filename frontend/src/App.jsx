@@ -7,6 +7,7 @@ import Terms from './components/Terms';
 import AssessmentForm from './components/AssessmentForm';
 import ResultsPage from './components/ResultsPage';
 import FeedbackPage from './components/FeedbackPage';
+import TestPage from './components/TestPage';
 
 function App() {
   useEffect(() => {
@@ -31,6 +32,7 @@ function App() {
       <Route path="/assessment" element={<AssessmentForm />} />
       <Route path="/results" element={<ResultsPage />} />
       <Route path="/feedback" element={<FeedbackPage />} />
+      <Route path="/test" element={<TestPage />} />
     </Routes>
   );
 }
