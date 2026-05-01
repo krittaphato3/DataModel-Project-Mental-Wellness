@@ -20,11 +20,6 @@ const staggerContainer = {
   }
 };
 
-const cardHover = {
-  rest: { scale: 1, y: 0 },
-  hover: { scale: 1.02, y: -4, transition: { duration: 0.2 } }
-};
-
 export default function Landing() {
   const navigate = useNavigate();
 
@@ -44,7 +39,7 @@ export default function Landing() {
         variants={staggerContainer}
         className="relative min-h-screen flex items-center justify-center px-4"
       >
-        {/* Decorative blobs (no jank) */}
+        {/* Decorative blobs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-nurture-olive/15 rounded-full blur-3xl animate-pulse" />
           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-nurture-clay/15 rounded-full blur-3xl animate-pulse [animation-delay:1000ms]" />
@@ -57,17 +52,11 @@ export default function Landing() {
             </div>
           </motion.div>
 
-          <motion.h1
-            variants={fadeUp}
-            className="text-5xl md:text-7xl lg:text-8xl font-serif font-bold text-stone-800 mb-6 tracking-tight"
-          >
+          <motion.h1 variants={fadeUp} className="text-5xl md:text-7xl lg:text-8xl font-serif font-bold text-stone-800 mb-6 tracking-tight">
             Mindful Compass
           </motion.h1>
 
-          <motion.p
-            variants={fadeUp}
-            className="text-lg md:text-xl text-stone-600 max-w-2xl mx-auto mb-10 leading-relaxed"
-          >
+          <motion.p variants={fadeUp} className="text-lg md:text-xl text-stone-600 max-w-2xl mx-auto mb-10 leading-relaxed">
             Navigate your mental wellness with clarity and purpose.
           </motion.p>
 
@@ -148,10 +137,7 @@ export default function Landing() {
               <motion.div
                 key={idx}
                 variants={fadeUp}
-                initial="rest"
-                whileHover="hover"
-                animate="rest"
-                variants={cardHover}
+                whileHover={{ y: -4, transition: { duration: 0.2 } }}
                 className="text-center p-4 rounded-xl bg-white/40 backdrop-blur-sm border border-stone-200/30"
               >
                 <div className="text-3xl md:text-4xl font-bold text-stone-800 mb-1">{stat.value}</div>

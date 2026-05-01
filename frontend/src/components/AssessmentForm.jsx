@@ -25,6 +25,26 @@ const steps = [
   { field: 'review', label: 'Review your answers', type: 'review' }
 ];
 
+function validateField(field, value, customRole) {
+  if (field === 'job_role') {
+    if (value === 'Other' && !customRole.trim()) {
+      return 'Please specify your job role.';
+    }
+    return null;
+  }
+  if (value === '' || value === null || value === undefined) {
+    return 'This field is required.';
+  }
+  const s = steps.find(s => s.field === field);
+  if (s?.type === 'number') {
+    const num = Number(value);
+    if (isNaN(num)) return 'Please enter a valid number.';
+    if (num < s.min) return `Minimum is ${s.min}.`;
+    if (num > s.max) return `Maximum is ${s.max}.`;
+  }
+  return null;
+}
+
 export default function AssessmentForm() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
@@ -39,9 +59,10 @@ export default function AssessmentForm() {
     age: '',
     job_role: 'Software Engineer'
   });
-  const [customRole, setCustomRole] = useState(''); // for "Other" job role
+  const [customRole, setCustomRole] = useState('');
   const [direction, setDirection] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);   // step error
 
   const totalInputSteps = steps.length - 1;
   const progress = ((currentStep) / totalInputSteps) * 100;
@@ -49,52 +70,33 @@ export default function AssessmentForm() {
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    setError(null);  // clear error on change
     if (field === 'job_role' && value !== 'Other') {
-      setCustomRole(''); // reset custom role when switching away
+      setCustomRole('');
     }
   };
 
   const goNext = () => {
-    if (step.type !== 'review' && currentStep < steps.length - 1) {
-      setDirection(1);
-      setCurrentStep(prev => prev + 1);
+    if (step.type === 'review') return;
+    const err = validateField(step.field, formData[step.field], customRole);
+    if (err) {
+      setError(err);
+      return;
     }
+    setError(null);
+    setDirection(1);
+    setCurrentStep(prev => prev + 1);
   };
 
   const goBack = () => {
+    setError(null);
     if (currentStep > 0) {
       setDirection(-1);
       setCurrentStep(prev => prev - 1);
     }
   };
 
-  // Validation: returns array of missing field labels
-  const getMissingFields = () => {
-    const missing = [];
-    steps.forEach(s => {
-      if (s.type === 'review') return;
-      const val = formData[s.field];
-      if (s.type === 'number') {
-        if (val === '' || val === null || val === undefined) {
-          missing.push(s.label);
-        }
-      } else if (s.field === 'job_role') {
-        if (val === 'Other') {
-          if (!customRole.trim()) {
-            missing.push('Job role (Other) – please specify');
-          }
-        }
-      }
-    });
-    return missing;
-  };
-
-  const missingFields = currentStep === steps.length - 1 ? getMissingFields() : [];
-  const canSubmit = missingFields.length === 0;
-
   const handleSubmit = async () => {
-    if (!canSubmit) return;
-
     setLoading(true);
     const payload = {
       weekly_work_hours: Number(formData.weekly_work_hours) || 40,
@@ -112,14 +114,22 @@ export default function AssessmentForm() {
     try {
       prediction = await predict(payload);
     } catch (err) {
-      console.error('Prediction failed:', err);
+      console.error(err);
+      let msg = 'Unknown error';
+      if (err.response?.data?.detail) {
+        const d = err.response.data.detail;
+        msg = typeof d === 'string' ? d : JSON.stringify(d);
+      } else if (err.message) {
+        msg = err.message;
+      }
+      alert(`Prediction failed: ${msg}`);
       prediction = {
-        offline: true,
-        burnout_score: null,
-        stress_level: null,
-        anxiety_score: null,
-        depression_score: null,
-        risk_category: null
+        burnout_level: null,
+        seeks_mental_health_support_score: null,
+        seeks_mental_health_support: null,
+        job_change_intention_score: null,
+        job_change_intention: null,
+        warnings: ['Backend connection failed']
       };
     } finally {
       setLoading(false);
@@ -130,7 +140,6 @@ export default function AssessmentForm() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-nurture-cream via-white to-nurture-sand py-8 px-4">
       <div className="max-w-lg mx-auto">
-        {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex items-center justify-between text-xs text-stone-500 mb-2">
             <span>Question {currentStep + 1} of {totalInputSteps}</span>
@@ -146,7 +155,6 @@ export default function AssessmentForm() {
           </div>
         </div>
 
-        {/* Card */}
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 md:p-8 border border-stone-200/50 shadow-sm min-h-[300px] flex flex-col justify-between">
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
@@ -162,23 +170,6 @@ export default function AssessmentForm() {
                 <div>
                   <h2 className="text-xl font-serif font-bold text-stone-800 mb-4">Almost done!</h2>
                   <p className="text-sm text-stone-600 mb-4">Please review your answers below.</p>
-
-                  {/* Missing fields warning */}
-                  {missingFields.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 text-sm text-red-700"
-                    >
-                      <p className="font-medium mb-2">Please complete all required fields:</p>
-                      <ul className="list-disc pl-5 space-y-1">
-                        {missingFields.map((field, i) => (
-                          <li key={i}>{field}</li>
-                        ))}
-                      </ul>
-                    </motion.div>
-                  )}
-
                   <div className="space-y-3 text-sm">
                     {steps.filter(s => s.type !== 'review').map(s => (
                       <div key={s.field} className="flex justify-between border-b border-stone-100 pb-2">
@@ -203,17 +194,19 @@ export default function AssessmentForm() {
                     {step.label}
                   </h2>
                   {step.type === 'number' && (
-                    <input
-                      type="number"
-                      value={formData[step.field]}
-                      onChange={e => handleChange(step.field, e.target.value)}
-                      placeholder={step.placeholder}
-                      min={step.min}
-                      max={step.max}
-                      step={step.step || 1}
-                      className="w-full border border-stone-300 rounded-xl px-4 py-3 text-stone-800 focus:ring-2 focus:ring-stone-500"
-                      autoFocus
-                    />
+                    <div>
+                      <input
+                        type="number"
+                        value={formData[step.field]}
+                        onChange={e => handleChange(step.field, e.target.value)}
+                        placeholder={step.placeholder}
+                        min={step.min}
+                        max={step.max}
+                        step={step.step || 1}
+                        className="w-full border border-stone-300 rounded-xl px-4 py-3 text-stone-800 focus:ring-2 focus:ring-stone-500"
+                        autoFocus
+                      />
+                    </div>
                   )}
                   {step.type === 'select' && (
                     <div>
@@ -227,8 +220,6 @@ export default function AssessmentForm() {
                           <option key={opt} value={opt}>{opt}</option>
                         ))}
                       </select>
-
-                      {/* Dynamic "Other" input */}
                       <AnimatePresence>
                         {step.field === 'job_role' && formData.job_role === 'Other' && (
                           <motion.div
@@ -271,12 +262,20 @@ export default function AssessmentForm() {
                       </div>
                     </div>
                   )}
+                  {error && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-4 text-sm text-red-600 bg-red-50 rounded-xl p-3 border border-red-200"
+                    >
+                      {error}
+                    </motion.p>
+                  )}
                 </div>
               )}
             </motion.div>
           </AnimatePresence>
 
-          {/* Navigation Buttons */}
           <div className="flex justify-between mt-8 pt-4 border-t border-stone-100">
             {currentStep > 0 && (
               <button
@@ -290,7 +289,7 @@ export default function AssessmentForm() {
             {step.type === 'review' ? (
               <button
                 onClick={handleSubmit}
-                disabled={!canSubmit || loading}
+                disabled={loading}
                 className="px-6 py-2.5 bg-stone-800 text-white rounded-full font-medium text-sm shadow-md hover:bg-stone-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
                 {loading ? 'Analyzing...' : 'Get My Results'}

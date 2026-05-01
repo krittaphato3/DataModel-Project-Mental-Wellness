@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { submitFeedback } from '../api';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } }
 };
-
-// Your deployed script URL
-const FEEDBACK_SHEET_URL = 'https://script.google.com/macros/s/AKfycbzPP0ySTEUm0kgE2O7mwBl7qolNjMX5UAbYdGhIjZiphsGXCXPj05l3Sdz0GHkfmDTP0Q/exec';
 
 export default function FeedbackPage() {
   const navigate = useNavigate();
@@ -18,50 +16,39 @@ export default function FeedbackPage() {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [submitted, setSubmitted] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const handleStarClick = (starIndex, half) => {
     const newRating = half ? starIndex - 0.5 : starIndex;
     setRating(newRating);
   };
 
-  // Save feedback directly to Google Sheets
-  const saveToSheet = async (feedbackData) => {
+  const sendFeedback = async () => {
+    if (rating === 0 && comment.trim() === '') return; // nothing to save
+    setSaving(true);
     try {
-      await fetch(FEEDBACK_SHEET_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(feedbackData)
-      });
-    } catch (err) {
-      console.error('Failed to save feedback:', err);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (rating === 0) {
-      alert('Please select a rating.');
-      return;
-    }
-    setSubmitting(true);
-    await saveToSheet({
-      rating,
-      comment,
-      predicted_values: prediction,
-      user_input: formData
-    });
-    setSubmitting(false);
-    setSubmitted(true);
-  };
-
-  const goHome = async () => {
-    if (rating > 0 || comment.trim().length > 0) {
-      await saveToSheet({
-        rating: rating || 0,
+      await submitFeedback({
+        rating,
         comment,
         predicted_values: prediction,
         user_input: formData
       });
+    } catch (err) {
+      console.error('Feedback save failed', err);
+      // Still continue – not critical
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    await sendFeedback();
+    setSubmitted(true);
+  };
+
+  const handleBackToHome = async () => {
+    if (rating > 0 || comment.trim() !== '') {
+      await sendFeedback();
     }
     navigate('/');
   };
@@ -95,7 +82,7 @@ export default function FeedbackPage() {
         <h2 className="text-xl font-serif font-semibold text-stone-800 mb-2">Rate Your Experience</h2>
         <p className="text-sm text-stone-500 mb-6">How accurate was this prediction?</p>
 
-        {/* Half-star rating */}
+        {/* Half‑star rating */}
         <div className="flex gap-1 mb-6 justify-center">
           {[1, 2, 3, 4, 5].map(star => (
             <div key={star} className="flex cursor-pointer">
@@ -141,18 +128,22 @@ export default function FeedbackPage() {
         <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={handleSubmit}
-            disabled={submitting || rating === 0}
+            disabled={saving || rating === 0}
             className="flex-1 py-2.5 bg-stone-800 text-white rounded-full text-sm font-medium hover:bg-stone-700 disabled:opacity-50 transition"
           >
-            {submitting ? 'Submitting...' : 'Submit Feedback'}
+            {saving ? 'Saving...' : 'Submit Feedback'}
           </button>
           <button
-            onClick={goHome}
+            onClick={handleBackToHome}
+            disabled={saving}
             className="px-5 py-2.5 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition"
           >
             Back to Home
           </button>
         </div>
+        <p className="text-xs text-stone-400 mt-4 text-center">
+          Your rating and comment will be saved even if you go straight home.
+        </p>
       </motion.div>
     </div>
   );
