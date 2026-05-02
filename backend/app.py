@@ -230,3 +230,4 @@ def feedback(data: FeedbackRequest):
         return {"status": "success", "message": "Thank you!"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
