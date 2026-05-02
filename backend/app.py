@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
+import uvicorn
 
 from feedback_sheet import save_feedback
 
@@ -231,3 +232,6 @@ def feedback(data: FeedbackRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
