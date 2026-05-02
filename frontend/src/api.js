@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE = '/_/backend';
+// Directly use local backend – no .env needed for testing
+const API_BASE = 'http://localhost:8000';
 
 export const predict = async (formData) => {
   const response = await axios.post(`${API_BASE}/predict`, formData);
