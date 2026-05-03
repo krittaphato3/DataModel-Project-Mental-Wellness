@@ -18,7 +18,7 @@ const thQuestions = [
   { id: 9, text: 'คิดถึงการทำร้ายตัวเองหรือคิดว่าตายไปจะดีกว่า' },
 ];
 
-// English questions (PHQ-9)
+// English questions
 const enQuestions = [
   { id: 1, text: 'Little interest or pleasure in doing things' },
   { id: 2, text: 'Feeling down, depressed, or hopeless' },
@@ -59,7 +59,6 @@ function getSeverity(total, lang) {
     if (total <= 19) return { level: 'ค่อนข้างรุนแรง', color: 'text-orange-700 bg-orange-50' };
     return { level: 'รุนแรง', color: 'text-red-700 bg-red-50' };
   }
-  // English severity labels
   if (total <= 4) return { level: 'None‑minimal', color: 'text-green-700 bg-green-50' };
   if (total <= 9) return { level: 'Mild', color: 'text-yellow-700 bg-yellow-50' };
   if (total <= 14) return { level: 'Moderate', color: 'text-amber-700 bg-amber-50' };
@@ -70,7 +69,7 @@ function getSeverity(total, lang) {
 export default function PHQ9() {
   const navigate = useNavigate();
   const location = useLocation();
-  const lang = location.state?.lang || 'th'; // default Thai
+  const lang = location.state?.lang || 'th';
   const questions = lang === 'th' ? thQuestions : enQuestions;
   const choices = lang === 'th' ? choicesTh : choicesEn;
 
@@ -173,10 +172,10 @@ export default function PHQ9() {
                 {choices.map((choice) => (
                   <label
                     key={choice.value}
-                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+                    className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
                       answers[currentStep] === choice.value
-                        ? 'bg-nurture-sand/80 border-stone-400 shadow-sm ring-1 ring-stone-300'
-                        : 'bg-white border-stone-200 hover:bg-stone-50'
+                        ? 'bg-nurture-sand/80 border-stone-400 shadow-sm ring-1 ring-stone-300 scale-[1.01]'
+                        : 'bg-white border-stone-200 hover:bg-nurture-sand/30 hover:shadow-sm hover:border-stone-300 hover:scale-[1.01]'
                     }`}
                   >
                     <input
@@ -188,10 +187,10 @@ export default function PHQ9() {
                       className="hidden"
                     />
                     <span
-                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
                         answers[currentStep] === choice.value
                           ? 'border-stone-600 bg-stone-600'
-                          : 'border-stone-300'
+                          : 'border-stone-300 group-hover:border-stone-400'
                       }`}
                     >
                       {answers[currentStep] === choice.value && (
@@ -211,7 +210,9 @@ export default function PHQ9() {
               <button onClick={goBack} className="px-4 py-2 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition">
                 {lang === 'th' ? '← ย้อนกลับ' : '← Back'}
               </button>
-            ) : <div />}
+            ) : (
+              <div />
+            )}
             {!isLast ? (
               <button
                 onClick={goNext}
