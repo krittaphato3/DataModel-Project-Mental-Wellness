@@ -4,10 +4,11 @@ import Lenis from '@studio-freight/lenis';
 import Landing from './components/Landing';
 import Statistics from './components/Statistics';
 import Terms from './components/Terms';
-import AssessmentForm from './components/AssessmentForm';
 import ResultsPage from './components/ResultsPage';
 import FeedbackPage from './components/FeedbackPage';
 import TestPage from './components/TestPage';
+import PHQ9 from './components/PHQ9';
+import LanguageSelect from './components/LanguageSelect';
 
 function App() {
   useEffect(() => {
@@ -29,10 +30,11 @@ function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/statistics" element={<Statistics />} />
       <Route path="/terms" element={<Terms />} />
-      <Route path="/assessment" element={<AssessmentForm />} />
       <Route path="/results" element={<ResultsPage />} />
       <Route path="/feedback" element={<FeedbackPage />} />
       <Route path="/test" element={<TestPage />} />
+      <Route path="/language" element={<LanguageSelect />} />
+      <Route path="/phq9" element={<PHQ9 />} />
     </Routes>
   );
 }

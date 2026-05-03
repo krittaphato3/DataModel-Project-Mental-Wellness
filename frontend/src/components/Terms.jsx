@@ -102,7 +102,7 @@ export default function Terms() {
               ← Back to Statistics
             </button>
             <button
-              onClick={() => agreed && navigate('/assessment')}
+              onClick={() => agreed && navigate('/language')}
               disabled={!agreed}
               className={`px-5 py-2 rounded-full font-medium text-xs transition-all duration-300 ${
                 agreed

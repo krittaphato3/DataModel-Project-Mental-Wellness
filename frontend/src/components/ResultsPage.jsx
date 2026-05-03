@@ -158,7 +158,7 @@ export default function ResultsPage() {
         </motion.div>
 
         <motion.div variants={fadeUp} className="flex justify-between items-center">
-          <button onClick={() => navigate('/assessment')} className="px-5 py-2.5 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition">
+          <button onClick={() => navigate('/language')} className="px-5 py-2.5 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition">
             ← Retake Assessment
           </button>
           <button onClick={() => navigate('/feedback', { state: { prediction, formData } })} className="px-6 py-3 bg-stone-800 text-white rounded-full font-medium text-sm shadow-md hover:bg-stone-700 transition">
