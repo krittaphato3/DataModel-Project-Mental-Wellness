@@ -9,7 +9,7 @@ import FeedbackPage from './components/FeedbackPage';
 import TestPage from './components/TestPage';
 import AssessmentForm from './components/AssessmentForm';
 import LanguageSelect from './components/LanguageSelect';
-import GAD7Screen from './components/GAD7Screen';
+import GAD7Screen from './components/GAD7Screen.jsx';
 
 export default function App() {
   useEffect(() => {
