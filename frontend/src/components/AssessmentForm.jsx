@@ -278,7 +278,7 @@ export default function AssessmentForm() {
         <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 md:p-8 border border-stone-200/50 shadow-sm min-h-[300px] flex flex-col justify-between">
           <AnimatePresence mode="wait" custom={direction}>
             <motion.div
-              key={`${phase}-${currentStep}`}
+              key={`${isPart1 ? 'p1' : 'p2'}-${currentStep}`}
               custom={direction}
               variants={fadeSlide}
               initial="initial"
