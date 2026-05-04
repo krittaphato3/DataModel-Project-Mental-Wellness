@@ -9,6 +9,10 @@ import FeedbackPage from './components/FeedbackPage';
 import TestPage from './components/TestPage';
 import AssessmentForm from './components/AssessmentForm';
 import LanguageSelect from './components/LanguageSelect';
+import GAD7Screen from './components/GAD7Screen'; // import หน้าที่เราเพิ่งสร้าง
+
+
+
 
 function App() {
   useEffect(() => {
@@ -35,7 +39,10 @@ function App() {
       <Route path="/test" element={<TestPage />} />
       <Route path="/language" element={<LanguageSelect />} />
       <Route path="/assessment" element={<AssessmentForm />} />
+      {/* เพิ่ม Route สำหรับ GAD-7 ไว้ที่นี่ */}
+      <Route path="/gad7" element={<GAD7Screen />} />
     </Routes>
+  );
   );
 }
 
