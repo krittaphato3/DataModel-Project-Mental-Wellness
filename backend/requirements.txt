@@ -11,4 +11,4 @@ python-dotenv==1.0.1
 requests
 catboost
 lightgbm
-xgboost
+xgboost==2.0.3
