@@ -98,15 +98,30 @@ const fadeSlide = {
   exit: { opacity: 0, x: -40, transition: { duration: 0.2 } },
 };
 
-// Overlay now appears instantly, then fades out
-const overlayVariants = {
-  visible: { opacity: 1 },                          // no entrance animation
-  exit: { opacity: 0, transition: { duration: 0.5 } } // only fade out
+// Overlay background – instantly visible, only fades out
+const overlayBg = {
+  hidden: { opacity: 1 },
+  visible: { opacity: 1 },
+  exit: { opacity: 0, transition: { duration: 0.5, ease: 'easeIn' } },
 };
 
-const overlayTextVariants = {
-  visible: { opacity: 1, scale: 1 },                // static, no animation
-  exit: { opacity: 0, scale: 0.98, transition: { duration: 0.4 } } // gentle exit
+// Staggered text container
+const textContainer = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.25, delayChildren: 0.1 } },
+  exit: {},
+};
+
+// Individual text pieces
+const textItem = {
+  hidden: { opacity: 0, y: 30, scale: 0.9 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { type: 'spring', stiffness: 80, damping: 14 },
+  },
+  exit: { opacity: 0, transition: { duration: 0.2 } },
 };
 
 export default function AssessmentForm() {
@@ -131,8 +146,8 @@ export default function AssessmentForm() {
         setShowOverlay(false);
         setTimeout(() => {
           setPhase(phase === 'part1-overlay' ? 'part1' : 'part2');
-        }, 500);  // wait for exit animation
-      }, 800);
+        }, 500);
+      }, 1800);
       return () => clearTimeout(t);
     }
   }, [phase]);
@@ -171,6 +186,7 @@ export default function AssessmentForm() {
   };
 
   const finishPart1 = () => {
+    setShowOverlay(true);
     setCurrentStep(0);
     setPhase('part2-overlay');
     setEntranceOn(false);
@@ -213,38 +229,45 @@ export default function AssessmentForm() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-nurture-cream via-white to-nurture-sand py-8 px-4 relative">
-      {/* ---- Overlay (appears instantly, then fades out) ---- */}
+      {/* Overlay – blur instant, text animates in */}
       <AnimatePresence>
         {showOverlay && (phase === 'part1-overlay' || phase === 'part2-overlay') && (
           <motion.div
             key="overlay"
-            variants={overlayVariants}
-            initial="visible"               // <-- starts fully visible
+            variants={overlayBg}
+            initial="hidden"
             animate="visible"
             exit="exit"
-            className="absolute inset-0 z-50 flex items-center justify-center bg-nurture-cream/60 backdrop-blur-sm"
+            className="absolute inset-0 z-50 flex items-center justify-center bg-nurture-cream/10 backdrop-blur-xl"
           >
             <motion.div
-              variants={overlayTextVariants}
-              initial="visible"             // <-- starts static
+              variants={textContainer}
+              initial="hidden"
               animate="visible"
               exit="exit"
               className="text-center"
             >
-              <div className="text-5xl md:text-6xl font-serif font-bold text-stone-800 mb-4">
-                {phase === 'part1-overlay' ? 'Part 1' : 'Part 2'}
-              </div>
-              <div className="text-lg text-stone-500">
-                {phase === 'part1-overlay'
-                  ? (lang === 'th' ? 'แบบประเมินภาวะซึมเศร้า (PHQ‑9)' : 'Depression Screening (PHQ‑9)')
-                  : (lang === 'th' ? 'แบบประเมินความวิตกกังวล (GAD‑7)' : 'Anxiety Screening (GAD‑7)')}
-              </div>
+              {/* Title */}
+              <motion.div variants={textItem} className="mb-2">
+                <h2 className="text-5xl md:text-6xl font-serif font-bold text-stone-800">
+                  {phase === 'part1-overlay' ? 'Part 1' : 'Part 2'}
+                </h2>
+              </motion.div>
+
+              {/* Subtitle */}
+              <motion.div variants={textItem}>
+                <p className="text-lg text-stone-500">
+                  {phase === 'part1-overlay'
+                    ? (lang === 'th' ? 'แบบประเมินภาวะซึมเศร้า (PHQ‑9)' : 'Depression Screening (PHQ‑9)')
+                    : (lang === 'th' ? 'แบบประเมินความวิตกกังวล (GAD‑7)' : 'Anxiety Screening (GAD‑7)')}
+                </p>
+              </motion.div>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ---- Question card ---- */}
+      {/* Question card – always visible, first question static */}
       <div className="max-w-lg mx-auto relative z-10">
         <div className="mb-8">
           <div className="flex items-center justify-between text-xs text-stone-500 mb-2">
