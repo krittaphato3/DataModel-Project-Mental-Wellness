@@ -23,6 +23,7 @@ const staggerContainer = {
 export default function Landing() {
   const navigate = useNavigate();
 
+  // ข้อมูลสถิติจากปี 2026
   const stats = [
     { value: '47.9%', label: 'High or Severe burnout – the largest class (Severe 28.6%)' },
     { value: '3.45×', label: 'Burnout gap: sleep <5h → 6.88 vs ≥8h → 3.43' },
@@ -61,20 +62,20 @@ export default function Landing() {
           </motion.p>
 
           <motion.div variants={fadeUp} className="flex flex-col sm:flex-row gap-4 justify-center">
+            {/* ปุ่มทำแบบประเมินเดิม */}
             <button
               onClick={() => navigate('/statistics')}
               className="px-8 py-3 bg-stone-800 text-white rounded-full font-semibold text-base shadow-md transition-all duration-300 hover:bg-stone-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
             >
               Begin Your Journey →
             </button>
-            <a
-              href="https://docs.google.com/document/d/1cGFc6LuNPqUxgew7JUfifwpWeQ6jgPP5vtB0xbsDuhs/edit?usp=sharing"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-8 py-3 border border-stone-300 text-stone-700 rounded-full font-semibold text-base bg-white/40 backdrop-blur-sm transition-all duration-300 hover:bg-white/60"
+            {/* ปุ่มใหม่สำหรับหน้า GAD-7 */}
+            <button
+              onClick={() => navigate('/gad7')}
+              className="px-8 py-3 border border-stone-300 text-stone-700 rounded-full font-semibold text-base bg-white/40 backdrop-blur-sm transition-all duration-300 hover:bg-white/60 hover:shadow-md hover:-translate-y-0.5 active:translate-y-0"
             >
-              Learn More
-            </a>
+              Anxiety Test (GAD-7)
+            </button>
           </motion.div>
         </div>
       </motion.section>
