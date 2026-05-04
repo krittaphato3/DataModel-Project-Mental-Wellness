@@ -24,7 +24,7 @@ const GAD7Screen = () => {
             return;
         }
         try {
-            const response = await fetch('http://localhost:8000/assess', {
+            const response = await fetch('[https://data-model-project-mental-wellness-liard.vercel.app/assess](https://data-model-project-mental-wellness-liard.vercel.app/assess)', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
