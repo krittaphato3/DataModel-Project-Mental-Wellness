@@ -11,7 +11,7 @@ export default function LanguageSelect() {
   const navigate = useNavigate();
 
   const handleSelect = (lang) => {
-    navigate('/phq9', { state: { lang } });
+    navigate('/assessment', { state: { lang } });
   };
 
   return (

@@ -7,7 +7,7 @@ import Terms from './components/Terms';
 import ResultsPage from './components/ResultsPage';
 import FeedbackPage from './components/FeedbackPage';
 import TestPage from './components/TestPage';
-import PHQ9 from './components/PHQ9';
+import AssessmentForm from './components/AssessmentForm';
 import LanguageSelect from './components/LanguageSelect';
 
 function App() {
@@ -34,7 +34,7 @@ function App() {
       <Route path="/feedback" element={<FeedbackPage />} />
       <Route path="/test" element={<TestPage />} />
       <Route path="/language" element={<LanguageSelect />} />
-      <Route path="/phq9" element={<PHQ9 />} />
+      <Route path="/assessment" element={<AssessmentForm />} />
     </Routes>
   );
 }
