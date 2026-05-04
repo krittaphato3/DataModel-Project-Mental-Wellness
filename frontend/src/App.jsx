@@ -9,10 +9,10 @@ import FeedbackPage from './components/FeedbackPage';
 import TestPage from './components/TestPage';
 import AssessmentForm from './components/AssessmentForm';
 import LanguageSelect from './components/LanguageSelect';
+import GAD7Screen from './components/GAD7Screen.jsx';
 
-function App() {
+export default function App() {
   useEffect(() => {
-    // การตั้งค่า Smooth Scroll (Lenis)
     const lenis = new Lenis({
       duration: 1.2,
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
@@ -36,8 +36,7 @@ function App() {
       <Route path="/test" element={<TestPage />} />
       <Route path="/language" element={<LanguageSelect />} />
       <Route path="/assessment" element={<AssessmentForm />} />
+      <Route path="/gad7" element={<GAD7Screen />} />
     </Routes>
   );
 }
-
-export default App;
