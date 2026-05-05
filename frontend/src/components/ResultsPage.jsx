@@ -49,9 +49,52 @@ export default function ResultsPage() {
 
   if (!prediction) return null;
 
-  const warnings = prediction.warnings || [];
-  const hasWarnings = warnings.length > 0;
+  // ---- DIAGNOSTIC LOGGING ----
+  console.log('=== RESULTS DIAGNOSTIC ===');
+  console.log('Full prediction object:', prediction);
+  console.log('Warnings:', prediction.warnings);
+  console.log('Burnout level:', prediction.burnout_level);
+  console.log('Seeks support score:', prediction.seeks_mental_health_support_score);
+  console.log('Job change score:', prediction.job_change_intention_score);
+  console.log('PHQ-9 total:', prediction.phq9_total);
+  console.log('GAD-7 total:', prediction.gad7_total);
+  console.log('===========================');
 
+  // Build diagnostic messages
+  const diagnosticMessages = [];
+  if (prediction.warnings && prediction.warnings.length > 0) {
+    diagnosticMessages.push(...prediction.warnings);
+  }
+
+  // Check each model individually
+  if (prediction.burnout_level === null) {
+    diagnosticMessages.push('Burnout model: NOT LOADED or prediction failed');
+  } else {
+    diagnosticMessages.push(`Burnout model: OK (score: ${prediction.burnout_level})`);
+  }
+
+  if (prediction.seeks_mental_health_support_score === null) {
+    diagnosticMessages.push('Seeks Support model: NOT LOADED or prediction failed');
+  } else {
+    diagnosticMessages.push(`Seeks Support model: OK (score: ${prediction.seeks_mental_health_support_score})`);
+  }
+
+  if (prediction.job_change_intention_score === null) {
+    diagnosticMessages.push('Job Change Intention model: NOT LOADED or prediction failed');
+  } else {
+    diagnosticMessages.push(`Job Change Intention model: OK (score: ${prediction.job_change_intention_score})`);
+  }
+
+  // Count missing
+  const missingCount = [
+    prediction.burnout_level === null,
+    prediction.seeks_mental_health_support_score === null,
+    prediction.job_change_intention_score === null,
+  ].filter(Boolean).length;
+
+  const allModelsOk = missingCount === 0;
+
+  // ---- METRICS ----
   const metrics = [
     {
       label: 'Burnout Level',
@@ -101,20 +144,32 @@ export default function ResultsPage() {
         variants={staggerContainer}
         className="max-w-2xl mx-auto"
       >
-        {/* Warnings */}
-        {hasWarnings && (
-          <motion.div
-            variants={fadeUp}
-            className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-sm text-red-700"
-          >
-            <p className="font-medium mb-1">Some models are missing:</p>
-            <ul className="list-disc pl-5 space-y-1">
-              {warnings.map((w, i) => (
-                <li key={i}>{w}</li>
-              ))}
-            </ul>
-          </motion.div>
-        )}
+        {/* Diagnostic Banner */}
+        <motion.div
+          variants={fadeUp}
+          className={`mb-6 rounded-2xl p-5 border shadow-sm ${
+            allModelsOk
+              ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-amber-50 border-amber-200 text-amber-800'
+          }`}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-lg">{allModelsOk ? '✅' : '⚠️'}</span>
+            <h3 className="font-serif font-semibold text-sm">
+              {allModelsOk
+                ? 'All ML models loaded successfully'
+                : `${missingCount} model(s) unavailable – showing partial results`}
+            </h3>
+          </div>
+          <ul className="text-xs space-y-1 list-disc pl-5 opacity-80">
+            {diagnosticMessages.map((msg, i) => (
+              <li key={i}>{msg}</li>
+            ))}
+          </ul>
+          <p className="text-xs mt-2 opacity-60">
+            Open the browser console (F12) for the full diagnostic dump.
+          </p>
+        </motion.div>
 
         {/* Title */}
         <motion.div variants={fadeUp} className="text-center mb-10">
