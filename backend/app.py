@@ -9,6 +9,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from feedback_sheet import save_feedback
+import uuid
+from datetime import datetime
 
 MODEL_DIR = "models"
 
@@ -236,10 +238,10 @@ def assess_endpoint(data: AssessRequest):
     if len(data.gad7_answers) != 7:
         raise HTTPException(status_code=400, detail="Exactly 7 GAD-7 answers required.")
 
+    # --- Scoring ---
     phq9_total = sum(data.phq9_answers)
     gad7_total = sum(data.gad7_answers)
 
-    # Severity
     if phq9_total <= 4:
         phq9_sev = "ปกติ / None-minimal"
     elif phq9_total <= 9:
@@ -260,26 +262,25 @@ def assess_endpoint(data: AssessRequest):
     else:
         gad7_sev = "รุนแรง / Severe"
 
-    # Raw feature dict (all numeric, no strings)
+    # --- ML prediction (using your existing logic, shortened) ---
     raw = {
         "phq9_score": phq9_total,
         "gad7_score": gad7_total,
-        "stress_score": data.stress_score,
-        "poor_balance_high_stress": data.poor_balance_high_stress,
-        "job_satisfaction_score": data.job_satisfaction_score,
-        "manager_support_score": data.manager_support_score,
-        "autonomy_score": data.autonomy_score,
-        "meetings_per_day": data.meetings_per_day,
-        "work_hours_per_week": data.work_hours_per_week,
-        "deadline_pressure_score": data.deadline_pressure_score,
-        "work_life_balance_score": data.work_life_balance_score,
-        "sleep_hours_per_night": data.sleep_hours_per_night,
-        "exercise_days_per_week": data.exercise_days_per_week,
-        "vacation_days_taken": data.vacation_days_taken,
-        "social_support_score": data.social_support_score,
-        "therapy_access": 1 if data.therapy_access == "Yes" else 0,   # numeric conversion
-        "salary_usd": data.salary_usd,
-        # fallbacks
+        "stress_score": data.stress_score or 0,
+        "poor_balance_high_stress": data.poor_balance_high_stress or 0,
+        "job_satisfaction_score": data.job_satisfaction_score or 0,
+        "manager_support_score": data.manager_support_score or 0,
+        "autonomy_score": data.autonomy_score or 0,
+        "meetings_per_day": data.meetings_per_day or 0,
+        "work_hours_per_week": data.work_hours_per_week or 40,
+        "deadline_pressure_score": data.deadline_pressure_score or 0,
+        "work_life_balance_score": data.work_life_balance_score or 0,
+        "sleep_hours_per_night": data.sleep_hours_per_night or 7,
+        "exercise_days_per_week": data.exercise_days_per_week or 0,
+        "vacation_days_taken": data.vacation_days_taken or 0,
+        "social_support_score": data.social_support_score or 0,
+        "therapy_access": 1 if data.therapy_access == "Yes" else 0,
+        "salary_usd": data.salary_usd or 0,
         "toxic_workplace_exposure": data.poor_balance_high_stress or 5,
         "manager_support": data.manager_support_score or 5,
         "work_location": "Remote",
@@ -298,7 +299,7 @@ def assess_endpoint(data: AssessRequest):
         warnings.append(burnout_err)
 
     # Mental health support
-    mental_res, mental_err = predict_model(mental_support_model, raw, "mental_support", is_regression=False)
+    mental_res, mental_err = predict_model(mental_support_model, raw, "mental_support")
     if mental_res:
         score, label = mental_res
         result["seeks_mental_health_support_score"] = score
@@ -306,11 +307,11 @@ def assess_endpoint(data: AssessRequest):
     else:
         result["seeks_mental_health_support_score"] = None
         result["seeks_mental_health_support"] = None
-    if mental_err:
-        warnings.append(mental_err)
+        if mental_err:
+            warnings.append(mental_err)
 
-    # Job change intention
-    change_res, change_err = predict_model(job_change_model, raw, "job_change", is_regression=False)
+    # Job change
+    change_res, change_err = predict_model(job_change_model, raw, "job_change")
     if change_res:
         score, label = change_res
         result["job_change_intention_score"] = score
@@ -318,8 +319,8 @@ def assess_endpoint(data: AssessRequest):
     else:
         result["job_change_intention_score"] = None
         result["job_change_intention"] = None
-    if change_err:
-        warnings.append(change_err)
+        if change_err:
+            warnings.append(change_err)
 
     result["phq9_total"] = phq9_total
     result["phq9_severity"] = phq9_sev
@@ -327,8 +328,95 @@ def assess_endpoint(data: AssessRequest):
     result["gad7_severity"] = gad7_sev
     result["warnings"] = warnings
 
-    print(f"[assess] PHQ-9={phq9_total}, GAD-7={gad7_total}, warnings={warnings}")
+    # --- NEW: Save answers immediately ---
+    submission_id = str(uuid.uuid4())
+    timestamp = datetime.now().isoformat()
+
+    # Build an answer row for each individual question
+    answers = []
+
+    # PHQ-9 (9 questions)
+    phq9_texts = [
+        "เบื่อ ไม่สนใจอะไรเลย / Little interest or pleasure in doing things",
+        "รู้สึกหดหู่ เศร้า หรือสิ้นหวัง / Feeling down, depressed, or hopeless",
+        "มีปัญหาในการนอนหลับ / Trouble falling/staying asleep",
+        "รู้สึกเหนื่อยล้า / Feeling tired or having little energy",
+        "เบื่ออาหารหรือกินมากเกินไป / Poor appetite or overeating",
+        "รู้สึกไม่ดีกับตัวเอง / Feeling bad about yourself",
+        "ขาดสมาธิ / Trouble concentrating",
+        "เคลื่อนไหวช้าลงหรือกระสับกระส่าย / Moving or speaking slowly",
+        "คิดทำร้ายตัวเอง / Thoughts of self-harm",
+    ]
+    for i, ans in enumerate(data.phq9_answers):
+        answers.append({"question": f"PHQ-9 Q{i+1}: {phq9_texts[i]}", "answer": ans, "timestamp": timestamp})
+
+    # GAD-7 (7 questions)
+    gad7_texts = [
+        "รู้สึกตึงเครียด วิตกกังวล / Feeling nervous, anxious",
+        "ไม่สามารถหยุดความกังวล / Cannot stop worrying",
+        "กังวลมากเกินไป / Worrying too much",
+        "ทำตัวให้ผ่อนคลายได้ยาก / Trouble relaxing",
+        "กระสับกระส่าย / Restless",
+        "หงุดหงิดง่าย / Easily annoyed",
+        "รู้สึกกลัว / Feeling afraid",
+    ]
+    for i, ans in enumerate(data.gad7_answers):
+        answers.append({"question": f"GAD-7 Q{i+1}: {gad7_texts[i]}", "answer": ans, "timestamp": timestamp})
+
+    # Part 3 fields (each becomes its own row)
+    part3_fields = [
+        ("stress_score", "คะแนนความเครียด / Stress score"),
+        ("poor_balance_high_stress", "ภาระงาน/เครียดสูง / Poor balance / high stress"),
+        ("job_satisfaction_score", "ความพึงพอใจในงาน / Job satisfaction"),
+        ("manager_support_score", "การสนับสนุนจากหัวหน้า / Manager support"),
+        ("autonomy_score", "ความเป็นอิสระในงาน / Autonomy"),
+        ("meetings_per_day", "ประชุมต่อวัน / Meetings per day"),
+        ("work_hours_per_week", "ชั่วโมงทำงาน/สัปดาห์ / Work hours/week"),
+        ("deadline_pressure_score", "แรงกดดันจากเส้นตาย / Deadline pressure"),
+        ("work_life_balance_score", "สมดุลชีวิต-งาน / Work-life balance"),
+        ("sleep_hours_per_night", "ชั่วโมงนอน/คืน / Sleep hours/night"),
+        ("exercise_days_per_week", "วันออกกำลังกาย/สัปดาห์ / Exercise days/week"),
+        ("vacation_days_taken", "วันลาพักร้อนที่ใช้ / Vacation days taken"),
+        ("social_support_score", "การสนับสนุนทางสังคม / Social support"),
+        ("therapy_access", "เข้าถึงการบำบัด / Therapy access"),
+        ("salary_usd", "เงินเดือน USD / Salary USD"),
+    ]
+    for field, label in part3_fields:
+        val = getattr(data, field, "")
+        if val is None:
+            val = ""
+        answers.append({"question": label, "answer": val, "timestamp": timestamp})
+
+    # Save to Google Sheets (or CSV fallback)
+    try:
+        from feedback_sheet import save_answers
+        save_answers(submission_id, answers)
+    except Exception as e:
+        warnings.append(f"Answer save failed: {str(e)}")
+
+    # Attach submission_id to the result so the frontend can use it later
+    result["submission_id"] = submission_id
+
     return result
+
+
+# -------------------------------------------------------------------
+# New endpoint: submit feedback (updates existing rows)
+# -------------------------------------------------------------------
+from pydantic import BaseModel as PydanticBaseModel
+
+class FeedbackSubmit(BaseModel):
+    submission_id: str
+    rating: float
+    comment: str = ""
+
+@app.post("/submit-feedback")
+def submit_feedback_endpoint(data: FeedbackSubmit):
+    from feedback_sheet import update_feedback
+    success = update_feedback(data.submission_id, data.rating, data.comment)
+    if not success:
+        raise HTTPException(status_code=500, detail="Could not update feedback – maybe the submission_id was not found or Google Sheets is unreachable.")
+    return {"status": "success", "message": "Thank you!"}
 
 
 @app.post("/phq9")
@@ -364,47 +452,18 @@ def root():
 
 
 @app.post("/feedback")
-def feedback(data: dict):   # accept any JSON body
+def feedback(data: dict):   # accept any flat JSON body
     try:
-        # Collect all keys we want in the sheet (ordered)
-        # We'll build a row dict with every key from the payload,
-        # plus a timestamp at the front.
-        record = {"timestamp": datetime.now().isoformat()}
-
-        # Merge all flat fields from the request
-        for key, value in data.items():
-            if key in ("rating", "comment"):
-                record[key] = value
-            else:
-                # question / prediction fields
-                record[key] = value
-
-        # If some fields are missing (older frontend), fill them with empty string
-        # We'll define the full column set we expect.
-        expected_columns = [
-            "timestamp", "rating", "comment",
-            "phq9_q1","phq9_q2","phq9_q3","phq9_q4","phq9_q5",
-            "phq9_q6","phq9_q7","phq9_q8","phq9_q9",
-            "gad7_q1","gad7_q2","gad7_q3","gad7_q4","gad7_q5",
-            "gad7_q6","gad7_q7",
-            "stress_score","poor_balance_high_stress",
-            "job_satisfaction_score","manager_support_score",
-            "autonomy_score","meetings_per_day","work_hours_per_week",
-            "deadline_pressure_score","work_life_balance_score",
-            "sleep_hours_per_night","exercise_days_per_week",
-            "vacation_days_taken","social_support_score",
-            "therapy_access","salary_usd",
-            "burnout_level","seeks_mental_health_support_score",
-            "seeks_mental_health_support","job_change_intention_score",
-            "job_change_intention",
-            "phq9_total","phq9_severity",
-            "gad7_total","gad7_severity",
-        ]
-
-        # Ensure every column exists
+        # Build a row with all expected columns (empty string if missing)
         row = {}
-        for col in expected_columns:
-            row[col] = record.get(col, "")
+        row["timestamp"] = datetime.now().isoformat()
+        row["rating"] = data.get("rating", "")
+        row["comment"] = data.get("comment", "")
+
+        # Flatten all remaining fields directly from the request
+        for key, value in data.items():
+            if key not in ("rating", "comment"):
+                row[key] = value
 
         save_feedback(row)
         return {"status": "success", "message": "Thank you!"}

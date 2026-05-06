@@ -1,83 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { submitFeedback } from '../api';
+import { updateFeedback } from './api';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
 
-/** Turn the raw formData into a flat object of individual columns */
-function flattenFormData(data) {
-  const flat = {};
-  if (!data) return flat;
-
-  // PHQ‑9 answers
-  if (Array.isArray(data.phq9_answers)) {
-    data.phq9_answers.forEach((val, idx) => {
-      flat[`phq9_q${idx + 1}`] = val ?? '';
-    });
-  }
-
-  // GAD‑7 answers
-  if (Array.isArray(data.gad7_answers)) {
-    data.gad7_answers.forEach((val, idx) => {
-      flat[`gad7_q${idx + 1}`] = val ?? '';
-    });
-  }
-
-  // Part 3 fields – each becomes its own column
-  const part3Fields = [
-    'stress_score',
-    'poor_balance_high_stress',
-    'job_satisfaction_score',
-    'manager_support_score',
-    'autonomy_score',
-    'meetings_per_day',
-    'work_hours_per_week',
-    'deadline_pressure_score',
-    'work_life_balance_score',
-    'sleep_hours_per_night',
-    'exercise_days_per_week',
-    'vacation_days_taken',
-    'social_support_score',
-    'therapy_access',
-    'salary_usd',
-  ];
-
-  part3Fields.forEach(field => {
-    flat[field] = data[field] !== undefined ? data[field] : '';
-  });
-
-  return flat;
-}
-
-/** Flatten prediction outputs */
-function flattenPrediction(pred) {
-  if (!pred) return {};
-  const keys = [
-    'burnout_level',
-    'seeks_mental_health_support_score',
-    'seeks_mental_health_support',
-    'job_change_intention_score',
-    'job_change_intention',
-    'phq9_total',
-    'phq9_severity',
-    'gad7_total',
-    'gad7_severity',
-  ];
-  const flat = {};
-  keys.forEach(k => {
-    flat[k] = pred[k] !== undefined ? pred[k] : '';
-  });
-  return flat;
-}
-
 export default function FeedbackPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { prediction, formData } = location.state || {};
+  const { prediction, formData, submissionId } = location.state || {};
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -93,39 +27,25 @@ export default function FeedbackPage() {
       alert('Please select a rating.');
       return;
     }
+    if (!submissionId) {
+      alert('Missing submission ID – cannot save feedback.');
+      return;
+    }
     setSubmitting(true);
-
-    // Build the flattened payload
-    const flatForm = flattenFormData(formData);
-    const flatPred = flattenPrediction(prediction);
-    const payload = {
-      rating,
-      comment: comment.trim(),
-      ...flatForm,
-      ...flatPred,
-    };
-
     try {
-      await submitFeedback(payload);
+      await updateFeedback(submissionId, rating, comment.trim());
       setSubmitted(true);
     } catch (err) {
-      console.error('Feedback submission failed', err);
+      console.error('Feedback update failed', err);
+      alert('Could not save feedback. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   const goHome = () => {
-    // If user already typed something, fire-and-forget a submission
-    if (rating > 0 || comment.trim()) {
-      const flatForm = flattenFormData(formData);
-      const flatPred = flattenPrediction(prediction);
-      submitFeedback({
-        rating,
-        comment: comment.trim(),
-        ...flatForm,
-        ...flatPred,
-      }).catch(console.error);
+    if (!submitted && submissionId && (rating > 0 || comment.trim())) {
+      updateFeedback(submissionId, rating, comment.trim()).catch(console.error);
     }
     navigate('/');
   };
@@ -155,7 +75,6 @@ export default function FeedbackPage() {
         <div className="flex gap-1 mb-6 justify-center">
           {[1,2,3,4,5].map(star => (
             <div key={star} className="flex cursor-pointer">
-              {/* Left half */}
               <span
                 onClick={() => handleStarClick(star, true)}
                 className="text-3xl select-none"
@@ -166,7 +85,6 @@ export default function FeedbackPage() {
               >
                 ★
               </span>
-              {/* Right half */}
               <span
                 onClick={() => handleStarClick(star, false)}
                 className="text-3xl select-none"
