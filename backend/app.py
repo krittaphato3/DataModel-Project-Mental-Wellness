@@ -67,12 +67,28 @@ class FeedbackRequest(BaseModel):
 
 
 class PHQ9Request(BaseModel):
-    answers: List[int]  # 9 ints
+    answers: List[int]
 
 
 class AssessRequest(BaseModel):
-    phq9_answers: List[int]  # 9 ints
-    gad7_answers: List[int]  # 7 ints
+    phq9_answers: List[int]
+    gad7_answers: List[int]
+    # Part 3 fields
+    stress_score: Optional[float] = None
+    poor_balance_high_stress: Optional[float] = None
+    job_satisfaction_score: Optional[float] = None
+    manager_support_score: Optional[float] = None
+    autonomy_score: Optional[float] = None
+    meetings_per_day: Optional[float] = None
+    work_hours_per_week: Optional[float] = None
+    deadline_pressure_score: Optional[float] = None
+    work_life_balance_score: Optional[float] = None
+    sleep_hours_per_night: Optional[float] = None
+    exercise_days_per_week: Optional[float] = None
+    vacation_days_taken: Optional[float] = None
+    social_support_score: Optional[float] = None
+    therapy_access: Optional[str] = None
+    salary_usd: Optional[float] = None
 
 
 # ------------------------------------------------------------
@@ -89,21 +105,39 @@ app.add_middleware(
 
 
 # ------------------------------------------------------------
-# Feature builder (for ML models)
+# Feature builder – supports both old UserInput and new dict
 # ------------------------------------------------------------
-def build_features(data: UserInput, model) -> pd.DataFrame:
-    raw = {
-        'age': data.age,
-        'years_experience': data.years_of_experience,
-        'work_hours_per_week': data.weekly_work_hours,
-        'meetings_per_day': data.meeting_hours_per_week / 5,
-        'sleep_hours_per_night': data.sleep_hours,
-        'work_location': data.work_location,
-        'job_role': data.job_role,
-        'toxic_workplace_exposure': data.toxic_workplace_exposure,
-        'manager_support': data.manager_support,
-    }
-    # Try to get expected feature names
+def build_features(data, model):
+    """
+    data can be:
+      - UserInput (old /predict)
+      - dict with the 15 additional fields + phq9/gad7 scores
+    Build a DataFrame with exactly the feature names the model expects.
+    """
+    # Convert to dict
+    if isinstance(data, UserInput):
+        raw = {
+            'age': data.age,
+            'years_experience': data.years_of_experience,
+            'work_hours_per_week': data.weekly_work_hours,
+            'meetings_per_day': data.meeting_hours_per_week / 5,
+            'sleep_hours_per_night': data.sleep_hours,
+            'work_location': data.work_location,
+            'job_role': data.job_role,
+            'toxic_workplace_exposure': data.toxic_workplace_exposure,
+            'manager_support': data.manager_support,
+            'manager_support_score': data.manager_support,  # duplicate for new field name
+        }
+    else:
+        raw = dict(data)  # it's already a dict
+
+    # Ensure common fields are present
+    for field in ['work_hours_per_week', 'meetings_per_day', 'sleep_hours_per_night',
+                  'toxic_workplace_exposure', 'manager_support', 'manager_support_score']:
+        if field not in raw:
+            raw[field] = 0
+
+    # Get expected feature names
     expected = None
     if hasattr(model, 'feature_names_in_'):
         expected = model.feature_names_in_.tolist()
@@ -113,119 +147,171 @@ def build_features(data: UserInput, model) -> pd.DataFrame:
         expected = model.get_feature_names()
 
     if expected:
-        print(f"[build_features] Model expects {len(expected)} columns: {expected[:10]}")
-        row = {}
+        feats = {}
         for col in expected:
             if col in raw:
-                row[col] = raw[col]
+                feats[col] = raw[col]
             elif col.startswith('work_location_'):
                 loc = raw.get('work_location', 'Remote')
-                row[col] = 1 if col == f'work_location_{loc}' else 0
+                feats[col] = 1 if col == f'work_location_{loc}' else 0
             elif col.startswith('job_role_'):
                 role = raw.get('job_role', 'Software Engineer')
-                row[col] = 1 if col == f'job_role_{role}' else 0
+                feats[col] = 1 if col == f'job_role_{role}' else 0
             else:
-                row[col] = 0
-        return pd.DataFrame([row])[expected]
+                # Unknown column – fill with 0
+                feats[col] = 0
+        return pd.DataFrame([feats])[expected]
 
     # Fallback 9-column
-    print("[build_features] No feature names found – using fallback 9-column array")
     loc_map = {"Remote": 0, "Hybrid": 1, "On-site": 2}
     role_list = ["Software Engineer", "Data Scientist", "Product Manager",
                  "DevOps Engineer", "QA Engineer", "Tech Lead", "UX Designer", "Other"]
-    role_idx = role_list.index(data.job_role) if data.job_role in role_list else 7
+    role_idx = role_list.index(raw.get('job_role', 'Software Engineer')) if raw.get('job_role', 'Software Engineer') in role_list else 7
     fallback = np.array([
-        data.weekly_work_hours,
-        data.sleep_hours,
-        data.toxic_workplace_exposure,
-        data.meeting_hours_per_week,
-        data.manager_support,
-        data.years_of_experience,
-        data.age,
-        loc_map.get(data.work_location, 1),
+        raw.get('work_hours_per_week', 40),
+        raw.get('sleep_hours_per_night', 7),
+        raw.get('toxic_workplace_exposure', 5),
+        raw.get('meetings_per_day', 2) * 5,
+        raw.get('manager_support', 5),
+        raw.get('years_experience', 0),
+        raw.get('age', 30),
+        loc_map.get(raw.get('work_location', 'Remote'), 1),
         role_idx,
     ])
     return pd.DataFrame(fallback)
 
 
 # ------------------------------------------------------------
-# Per-model prediction
+# Single prediction helper – returns (result, error_message)
 # ------------------------------------------------------------
-def predict_with_model(model, data: UserInput, model_name: str):
+def predict_model(model, raw_data, model_name, is_regression=False):
     if model is None:
-        return None, None, f"{model_name} model not found"
+        return None, f"{model_name} model not found"
     if not hasattr(model, 'predict'):
-        return None, None, f"{model_name} is not a valid model"
+        return None, f"{model_name} is not a valid model object"
     try:
-        features = build_features(data, model)
-        if hasattr(model, 'predict_proba'):
+        features = build_features(raw_data, model)
+        if hasattr(model, 'predict_proba') and not is_regression:
             proba = model.predict_proba(features)[0]
             score = float(proba[1]) if len(proba) > 1 else float(proba[0])
             label = 1 if score >= 0.5 else 0
-            return round(score, 2), label, None
+            return (round(score, 2), label), None
         else:
             val = float(model.predict(features)[0])
-            if model_name == "burnout":
+            if is_regression:
                 val = min(10, max(0, round(val, 1)))
-                return val, None, None
+                return val, None
+            # binary classification without predict_proba
             label = 1 if val >= 0.5 else 0
-            return val, label, None
+            return (val, label), None
     except Exception as e:
-        return None, None, f"{model_name} prediction error: {str(e)}"
+        return None, f"{model_name} prediction error: {str(e)}"
 
 
 # ------------------------------------------------------------
-# Endpoints
+# Robust /assess endpoint – returns per-model errors
 # ------------------------------------------------------------
-@app.get("/")
-def root():
-    return {"status": "Tech Wellness Predictor API active", "models": model_status}
+@app.post("/assess")
+def assess_endpoint(data: AssessRequest):
+    if len(data.phq9_answers) != 9:
+        raise HTTPException(status_code=400, detail="Exactly 9 PHQ-9 answers required.")
+    if len(data.gad7_answers) != 7:
+        raise HTTPException(status_code=400, detail="Exactly 7 GAD-7 answers required.")
 
+    phq9_total = sum(data.phq9_answers)
+    gad7_total = sum(data.gad7_answers)
 
-@app.post("/predict")
-def predict(data: UserInput):
+    # Severity
+    if phq9_total <= 4:
+        phq9_sev = "ปกติ / None-minimal"
+    elif phq9_total <= 9:
+        phq9_sev = "เล็กน้อย / Mild"
+    elif phq9_total <= 14:
+        phq9_sev = "ปานกลาง / Moderate"
+    elif phq9_total <= 19:
+        phq9_sev = "ค่อนข้างรุนแรง / Moderately severe"
+    else:
+        phq9_sev = "รุนแรง / Severe"
+
+    if gad7_total <= 4:
+        gad7_sev = "ปกติ / None-minimal"
+    elif gad7_total <= 9:
+        gad7_sev = "เล็กน้อย / Mild"
+    elif gad7_total <= 14:
+        gad7_sev = "ปานกลาง / Moderate"
+    else:
+        gad7_sev = "รุนแรง / Severe"
+
+    # Build a feature dictionary from the request
+    raw = {
+        "phq9_score": phq9_total,
+        "gad7_score": gad7_total,
+        "stress_score": data.stress_score,
+        "poor_balance_high_stress": data.poor_balance_high_stress,
+        "job_satisfaction_score": data.job_satisfaction_score,
+        "manager_support_score": data.manager_support_score,
+        "autonomy_score": data.autonomy_score,
+        "meetings_per_day": data.meetings_per_day,
+        "work_hours_per_week": data.work_hours_per_week,
+        "deadline_pressure_score": data.deadline_pressure_score,
+        "work_life_balance_score": data.work_life_balance_score,
+        "sleep_hours_per_night": data.sleep_hours_per_night,
+        "exercise_days_per_week": data.exercise_days_per_week,
+        "vacation_days_taken": data.vacation_days_taken,
+        "social_support_score": data.social_support_score,
+        "therapy_access": data.therapy_access,
+        "salary_usd": data.salary_usd,
+        # fallbacks for old UserInput fields (some models might expect them)
+        "toxic_workplace_exposure": data.poor_balance_high_stress or 5,
+        "manager_support": data.manager_support_score or 5,
+        "work_location": "Remote",
+        "job_role": "Software Engineer",
+        "years_experience": 0,
+        "age": 30,
+    }
+
     warnings = []
     result = {}
 
-    # Burnout
-    if burnout_model:
-        val, _, err = predict_with_model(burnout_model, data, "burnout")
-        result["burnout_level"] = val
-    else:
-        result["burnout_level"] = None
-        warnings.append("burnout_model.pkl not found")
-    if 'err' in locals() and err:
-        warnings.append(err)
+    # Burnout (regression)
+    burnout_val, burnout_err = predict_model(burnout_model, raw, "burnout", is_regression=True)
+    result["burnout_level"] = burnout_val
+    if burnout_err:
+        warnings.append(burnout_err)
 
-    # Seeks support
-    if mental_support_model:
-        score, label, err = predict_with_model(mental_support_model, data, "mental_support")
+    # Mental health support (binary)
+    mental_res, mental_err = predict_model(mental_support_model, raw, "mental_support", is_regression=False)
+    if mental_res:
+        score, label = mental_res
         result["seeks_mental_health_support_score"] = score
         result["seeks_mental_health_support"] = label
     else:
         result["seeks_mental_health_support_score"] = None
         result["seeks_mental_health_support"] = None
-        warnings.append("seeks_mental_health_support.pkl not found")
-    if 'err' in locals() and err:
-        warnings.append(err)
+    if mental_err:
+        warnings.append(mental_err)
 
-    # Job change intention
-    if job_change_model:
-        score, label, err = predict_with_model(job_change_model, data, "job_change")
+    # Job change intention (binary)
+    change_res, change_err = predict_model(job_change_model, raw, "job_change", is_regression=False)
+    if change_res:
+        score, label = change_res
         result["job_change_intention_score"] = score
         result["job_change_intention"] = label
     else:
         result["job_change_intention_score"] = None
         result["job_change_intention"] = None
-        warnings.append("job_changed_intention.pkl not found")
-    if 'err' in locals() and err:
-        warnings.append(err)
+    if change_err:
+        warnings.append(change_err)
 
-    print(f"[predict] Input: {data.dict()}")
-    print(f"[predict] Result: {result}")
-    if warnings:
-        print(f"[predict] Warnings: {warnings}")
+    result["phq9_total"] = phq9_total
+    result["phq9_severity"] = phq9_sev
+    result["gad7_total"] = gad7_total
+    result["gad7_severity"] = gad7_sev
     result["warnings"] = warnings
+
+    # Print locally (will appear in Render logs if you look, but also returned to frontend)
+    print(f"[assess] PHQ-9={phq9_total}, GAD-7={gad7_total}, warnings={warnings}")
+
     return result
 
 
@@ -244,7 +330,7 @@ def phq9_endpoint(data: PHQ9Request):
         severity = "ค่อนข้างรุนแรง / Moderately severe"
     else:
         severity = "รุนแรง / Severe"
-    result = {
+    return {
         "phq9_total": total,
         "phq9_severity": severity,
         "burnout_level": None,
@@ -252,58 +338,13 @@ def phq9_endpoint(data: PHQ9Request):
         "seeks_mental_health_support": None,
         "job_change_intention_score": None,
         "job_change_intention": None,
-        "warnings": [],
+        "warnings": ["phq9 endpoint used – no ML prediction"],
     }
-    print(f"[phq9] Total={total}, Severity={severity}")
-    return result
 
 
-@app.post("/assess")
-def assess_endpoint(data: AssessRequest):
-    if len(data.phq9_answers) != 9:
-        raise HTTPException(status_code=400, detail="Exactly 9 PHQ-9 answers required.")
-    if len(data.gad7_answers) != 7:
-        raise HTTPException(status_code=400, detail="Exactly 7 GAD-7 answers required.")
-
-    phq9_total = sum(data.phq9_answers)
-    gad7_total = sum(data.gad7_answers)
-
-    # PHQ-9 severity
-    if phq9_total <= 4:
-        phq9_sev = "ปกติ / None-minimal"
-    elif phq9_total <= 9:
-        phq9_sev = "เล็กน้อย / Mild"
-    elif phq9_total <= 14:
-        phq9_sev = "ปานกลาง / Moderate"
-    elif phq9_total <= 19:
-        phq9_sev = "ค่อนข้างรุนแรง / Moderately severe"
-    else:
-        phq9_sev = "รุนแรง / Severe"
-
-    # GAD-7 severity
-    if gad7_total <= 4:
-        gad7_sev = "ปกติ / None-minimal"
-    elif gad7_total <= 9:
-        gad7_sev = "เล็กน้อย / Mild"
-    elif gad7_total <= 14:
-        gad7_sev = "ปานกลาง / Moderate"
-    else:
-        gad7_sev = "รุนแรง / Severe"
-
-    result = {
-        "phq9_total": phq9_total,
-        "phq9_severity": phq9_sev,
-        "gad7_total": gad7_total,
-        "gad7_severity": gad7_sev,
-        "burnout_level": None,
-        "seeks_mental_health_support_score": None,
-        "seeks_mental_health_support": None,
-        "job_change_intention_score": None,
-        "job_change_intention": None,
-        "warnings": [],
-    }
-    print(f"[assess] PHQ-9={phq9_total} ({phq9_sev}), GAD-7={gad7_total} ({gad7_sev})")
-    return result
+@app.get("/")
+def root():
+    return {"status": "Tech Wellness Predictor API active", "models": model_status}
 
 
 @app.post("/feedback")
@@ -320,10 +361,3 @@ def feedback(data: FeedbackRequest):
         return {"status": "success", "message": "Thank you!"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-if __name__ == "__main__":
-    import uvicorn
-    import os
-
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run("app:app", host="0.0.0.0", port=port)
