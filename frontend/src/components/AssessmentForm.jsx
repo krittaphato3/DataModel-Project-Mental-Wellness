@@ -1,9 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+// Helper to scroll instantly to top (works with Lenis or native)
+const scrollToTop = () => {
+  if (window.lenis) {
+    window.lenis.scrollTo(0, 0, { immediate: true });
+  } else {
+    window.scrollTo(0, 0);
+  }
+};
 
 /* ---------- PHQ‑9 (Part 1) ---------- */
 const phq9QuestionsTh = [
@@ -62,7 +71,6 @@ const choicesEn = [
   { value: 3, label: 'Nearly every day' },
 ];
 
-/* ---------- Severity helpers ---------- */
 function phq9Severity(total, lang) {
   if (lang === 'th') {
     if (total <= 4) return { level: 'ปกติ', color: 'text-green-700 bg-green-50' };
@@ -90,7 +98,6 @@ function gad7Severity(total, lang) {
   return { level: 'Severe', color: 'text-red-700 bg-red-50' };
 }
 
-/* ---------- Animation variants ---------- */
 const fadeSlide = {
   initial: { opacity: 0, x: 40 },
   animate: { opacity: 1, x: 0, transition: { duration: 0.3, ease: 'easeOut' } },
@@ -120,63 +127,31 @@ const textItem = {
   exit: { opacity: 0, transition: { duration: 0.2 } },
 };
 
-const part3Container = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.05, delayChildren: 0.1 } },
+/* ---------- Additional fields configuration ---------- */
+const fieldConfig = {
+  stress_score: { type: 'slider', min: 0, max: 10, step: 0.5, labelTh: 'คะแนนความเครียด', labelEn: 'Stress score', placeholder: '0-10' },
+  poor_balance_high_stress: { type: 'slider', min: 0, max: 10, step: 0.5, labelTh: 'ภาระงาน/เครียดสูง', labelEn: 'Poor balance / high stress', placeholder: '0-10' },
+  job_satisfaction_score: { type: 'slider', min: 0, max: 10, step: 0.5, labelTh: 'ความพึงพอใจในงาน', labelEn: 'Job satisfaction', placeholder: '0-10' },
+  manager_support_score: { type: 'slider', min: 0, max: 10, step: 0.5, labelTh: 'การสนับสนุนจากหัวหน้า', labelEn: 'Manager support', placeholder: '0-10' },
+  autonomy_score: { type: 'slider', min: 0, max: 10, step: 0.5, labelTh: 'ความเป็นอิสระในงาน', labelEn: 'Autonomy', placeholder: '0-10' },
+  meetings_per_day: { type: 'number', min: 0, max: 20, step: 0.5, labelTh: 'ประชุมต่อวัน', labelEn: 'Meetings per day', placeholder: '0-20' },
+  work_hours_per_week: { type: 'number', min: 0, max: 120, step: 1, labelTh: 'ชั่วโมงทำงาน/สัปดาห์', labelEn: 'Work hours/week', placeholder: '0-120' },
+  deadline_pressure_score: { type: 'slider', min: 0, max: 10, step: 0.5, labelTh: 'แรงกดดันจากเส้นตาย', labelEn: 'Deadline pressure', placeholder: '0-10' },
+  work_life_balance_score: { type: 'slider', min: 0, max: 10, step: 0.5, labelTh: 'สมดุลชีวิต-งาน', labelEn: 'Work-life balance', placeholder: '0-10' },
+  sleep_hours_per_night: { type: 'number', min: 0, max: 24, step: 0.5, labelTh: 'ชั่วโมงนอน/คืน', labelEn: 'Sleep hours/night', placeholder: '0-24' },
+  exercise_days_per_week: { type: 'number', min: 0, max: 7, step: 1, labelTh: 'วันออกกำลังกาย/สัปดาห์', labelEn: 'Exercise days/week', placeholder: '0-7' },
+  vacation_days_taken: { type: 'number', min: 0, max: 365, step: 1, labelTh: 'วันลาพักร้อนที่ใช้', labelEn: 'Vacation days taken', placeholder: '0-365' },
+  social_support_score: { type: 'slider', min: 0, max: 10, step: 0.5, labelTh: 'การสนับสนุนทางสังคม', labelEn: 'Social support', placeholder: '0-10' },
+  therapy_access: { type: 'select', options: ['No', 'Yes'], labelTh: 'เข้าถึงการบำบัด', labelEn: 'Therapy access' },
+  salary_usd: { type: 'number', min: 0, max: Infinity, step: 1000, labelTh: 'เงินเดือน (USD)', labelEn: 'Salary (USD)', placeholder: 'e.g. 85000' },
 };
 
-const part3Item = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
-};
-
-/* ---------- Part 3 sub‑group definitions ---------- */
-const part3Groups = [
-  {
-    key: 'mental',
-    titleTh: 'สุขภาพจิต',
-    titleEn: 'Mental Health & Psychological',
-    fields: [
-      { name: 'phq9_score', labelTh: 'คะแนน PHQ‑9 (คำนวณจากส่วนที่ 1)', labelEn: 'PHQ‑9 Score (from Part 1)', type: 'readonly' },
-      { name: 'gad7_score', labelTh: 'คะแนน GAD‑7 (คำนวณจากส่วนที่ 2)', labelEn: 'GAD‑7 Score (from Part 2)', type: 'readonly' },
-      { name: 'stress_score', labelTh: 'คะแนนความเครียด (0‑10)', labelEn: 'Stress score (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
-      { name: 'poor_balance_high_stress', labelTh: 'ภาระงาน / ความเครียด (0‑10)', labelEn: 'Poor balance / high stress (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
-    ],
-  },
-  {
-    key: 'work',
-    titleTh: 'สภาพแวดล้อมการทำงาน',
-    titleEn: 'Work Environment & Job Conditions',
-    fields: [
-      { name: 'job_satisfaction_score', labelTh: 'ความพึงพอใจในงาน (0‑10)', labelEn: 'Job satisfaction (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
-      { name: 'manager_support_score', labelTh: 'การสนับสนุนจากหัวหน้า (0‑10)', labelEn: 'Manager support (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
-      { name: 'autonomy_score', labelTh: 'ความเป็นอิสระในงาน (0‑10)', labelEn: 'Autonomy (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
-      { name: 'meetings_per_day', labelTh: 'ประชุมต่อวัน (0‑20)', labelEn: 'Meetings per day (0‑20)', type: 'number', min: 0, max: 20, step: 0.5 },
-      { name: 'work_hours_per_week', labelTh: 'ชั่วโมงทำงานต่อสัปดาห์ (0‑120)', labelEn: 'Work hours per week (0‑120)', type: 'number', min: 0, max: 120, step: 1 },
-      { name: 'deadline_pressure_score', labelTh: 'ความกดดันจากเส้นตาย (0‑10)', labelEn: 'Deadline pressure (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
-      { name: 'work_life_balance_score', labelTh: 'สมดุลชีวิต‑งาน (0‑10)', labelEn: 'Work‑life balance (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
-    ],
-  },
-  {
-    key: 'lifestyle',
-    titleTh: 'ไลฟ์สไตล์และสุขภาพ',
-    titleEn: 'Lifestyle & Health',
-    fields: [
-      { name: 'sleep_hours_per_night', labelTh: 'ชั่วโมงนอนต่อคืน (0‑24)', labelEn: 'Sleep hours per night (0‑24)', type: 'number', min: 0, max: 24, step: 0.5 },
-      { name: 'exercise_days_per_week', labelTh: 'วันที่ออกกำลังกายต่อสัปดาห์ (0‑7)', labelEn: 'Exercise days per week (0‑7)', type: 'number', min: 0, max: 7, step: 1 },
-      { name: 'vacation_days_taken', labelTh: 'วันลาพักร้อนที่ใช้ (0‑365)', labelEn: 'Vacation days taken (0‑365)', type: 'number', min: 0, max: 365, step: 1 },
-    ],
-  },
-  {
-    key: 'social_economic',
-    titleTh: 'สังคมและการเงิน',
-    titleEn: 'Social & Economic',
-    fields: [
-      { name: 'social_support_score', labelTh: 'การสนับสนุนทางสังคม (0‑10)', labelEn: 'Social support (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
-      { name: 'therapy_access', labelTh: 'เข้าถึงการบำบัด', labelEn: 'Therapy access', type: 'select', options: ['No', 'Yes'] },
-      { name: 'salary_usd', labelTh: 'เงินเดือน USD (0‑1,000,000)', labelEn: 'Salary USD (0‑1,000,000)', type: 'number', min: 0, max: 1000000, step: 1000 },
-    ],
-  },
+const subParts = [
+  { key: 'mental', titleTh: 'สุขภาพจิตและความเครียด', titleEn: 'Mental Health & Psychological Measures', fields: ['stress_score', 'poor_balance_high_stress'] },
+  { key: 'work', titleTh: 'สภาพแวดล้อมการทำงาน', titleEn: 'Work Environment & Job Conditions', fields: ['job_satisfaction_score', 'manager_support_score', 'autonomy_score', 'meetings_per_day', 'work_hours_per_week', 'deadline_pressure_score', 'work_life_balance_score'] },
+  { key: 'lifestyle', titleTh: 'พฤติกรรมการใช้ชีวิตและสุขภาพ', titleEn: 'Lifestyle & Health Behaviors', fields: ['sleep_hours_per_night', 'exercise_days_per_week', 'vacation_days_taken'] },
+  { key: 'social', titleTh: 'ระบบสังคมและการสนับสนุน', titleEn: 'Social & Support Systems', fields: ['social_support_score', 'therapy_access'] },
+  { key: 'economic', titleTh: 'เศรษฐกิจ / ค่าตอบแทน', titleEn: 'Economic / Compensation', fields: ['salary_usd'] },
 ];
 
 export default function AssessmentForm() {
@@ -194,29 +169,26 @@ export default function AssessmentForm() {
   const [entranceOn, setEntranceOn] = useState(false);
   const [viewMode, setViewMode] = useState('single');
 
-  const [part3SubIndex, setPart3SubIndex] = useState(0);
+  const [subPartIdx, setSubPartIdx] = useState(0);
+  const [subCurrentStep, setSubCurrentStep] = useState(0);
+  const [subDirection, setSubDirection] = useState(0);
 
-  // additional fields state – same as before
+  // Initialize additional fields: sliders default to 5, others to empty string
   const [additional, setAdditional] = useState(() => {
-    const initial = {};
-    part3Groups.forEach(group =>
-      group.fields.forEach(f => {
-        initial[f.name] = f.type === 'select' ? (f.options ? f.options[0] : '') : '';
-      })
-    );
-    return initial;
+    const init = {};
+    Object.keys(fieldConfig).forEach(k => {
+      const cfg = fieldConfig[k];
+      if (cfg.type === 'slider') {
+        init[k] = 5;              // midpoint default
+      } else if (cfg.type === 'select') {
+        init[k] = 'No';
+      } else {
+        init[k] = '';
+      }
+    });
+    return init;
   });
 
-  // computed scores for readonly display
-  const computedPhq9 = useMemo(() => phq9Answers.filter(a => a !== null).reduce((a,b)=>a+b,0), [phq9Answers]);
-  const computedGad7 = useMemo(() => gad7Answers.filter(a => a !== null).reduce((a,b)=>a+b,0), [gad7Answers]);
-
-  // pre-fill readonly fields whenever computed scores change
-  useEffect(() => {
-    setAdditional(prev => ({ ...prev, phq9_score: computedPhq9, gad7_score: computedGad7 }));
-  }, [computedPhq9, computedGad7]);
-
-  /* overlay auto‑dismiss (for Part 1/2/3) */
   useEffect(() => {
     if (phase === 'part1-overlay' || phase === 'part2-overlay' || phase === 'part3-overlay') {
       setShowOverlay(true);
@@ -236,49 +208,38 @@ export default function AssessmentForm() {
   const isPart2 = phase === 'part2-overlay' || phase === 'part2';
   const isPart3 = phase === 'part3-overlay' || phase === 'part3';
 
-  const questions = isPart1
-    ? (lang === 'th' ? phq9QuestionsTh : phq9QuestionsEn)
-    : isPart2
-    ? (lang === 'th' ? gad7QuestionsTh : gad7QuestionsEn)
-    : [];
+  const questions = isPart1 ? (lang === 'th' ? phq9QuestionsTh : phq9QuestionsEn) : isPart2 ? (lang === 'th' ? gad7QuestionsTh : gad7QuestionsEn) : [];
   const answers = isPart1 ? phq9Answers : isPart2 ? gad7Answers : [];
   const totalSteps = questions.length;
-  const progress = viewMode === 'single' ? ((currentStep) / (questions.length || 1)) * 100 : 100;
+  const progress = viewMode === 'single' ? ((currentStep) / totalSteps) * 100 : 100;
   const q = questions[currentStep];
   const choices = lang === 'th' ? choicesTh : choicesEn;
-  const isLastQ = currentStep === (questions.length - 1);
+  const isLastQ = currentStep === totalSteps - 1;
+  const canProceed = answers[currentStep] !== null;
 
   const allPart1Answered = phq9Answers.every(a => a !== null);
   const allPart2Answered = gad7Answers.every(a => a !== null);
 
-  // -- Part 3 sub‑group helpers --
-  const currentGroup = part3Groups[part3SubIndex];
-  const groupFields = currentGroup?.fields || [];
-  const groupTotalSteps = groupFields.length;
-  const groupProgress = viewMode === 'single' ? ((currentStep) / (groupTotalSteps || 1)) * 100 : 100;
-  const groupQ = groupFields[currentStep];
-  const groupCanProceed = groupFields[currentStep] ? (additional[groupFields[currentStep].name] !== '' && additional[groupFields[currentStep].name] !== null) : false;
-  const allGroupAnswered = groupFields.every(f => {
-    const val = additional[f.name];
-    if (f.type === 'number' || f.type === 'slider') {
-      if (val === '' || val === null) return false;
-      const num = Number(val);
-      return !isNaN(num) && num >= f.min && num <= f.max;
-    }
-    return val !== '' && val !== null;
-  });
-  const allPart3Answered = part3Groups.every(group =>
-    group.fields.every(f => {
-      const val = additional[f.name];
-      if (f.type === 'readonly') return true; // readonly auto-filled
-      if (f.type === 'number' || f.type === 'slider') {
-        if (val === '' || val === null) return false;
-        const num = Number(val);
-        return !isNaN(num) && num >= f.min && num <= f.max;
-      }
-      return val !== '' && val !== null;
-    })
-  );
+  const currentSubPart = subParts[subPartIdx];
+  const currentFields = currentSubPart.fields;
+  const isSubSingle = viewMode === 'single';
+  const totalSubSteps = currentFields.length;
+  const subProgress = isSubSingle ? ((subCurrentStep) / totalSubSteps) * 100 : 100;
+
+  const isValidField = (fieldName) => {
+    const val = additional[fieldName];
+    const cfg = fieldConfig[fieldName];
+    if (!cfg) return true;
+    if (cfg.type === 'select') return val !== '';
+    if (val === '' || val === null) return false;
+    const num = Number(val);
+    if (isNaN(num)) return false;
+    if (cfg.max === Infinity) return num >= cfg.min;
+    return num >= cfg.min && num <= cfg.max;
+  };
+
+  const allSubFieldsValid = currentFields.every(f => isValidField(f));
+  const allPart3Valid = Object.keys(fieldConfig).every(f => isValidField(f));
 
   const handleSelect = (value, index = currentStep) => {
     const newAnswers = [...answers];
@@ -286,15 +247,8 @@ export default function AssessmentForm() {
     isPart1 ? setPhq9Answers(newAnswers) : setGad7Answers(newAnswers);
   };
 
-  const handleAdditionalChange = (name, value) => {
-    setAdditional(prev => ({ ...prev, [name]: value }));
-  };
-
   const goNext = () => {
-    if (!groupCanProceed && isPart3) return;
-    if (isPart1 || isPart2) {
-      if (answers[currentStep] === null) return;
-    }
+    if (!canProceed) return;
     setEntranceOn(true);
     setDirection(1);
     setCurrentStep((p) => p + 1);
@@ -309,7 +263,7 @@ export default function AssessmentForm() {
   };
 
   const finishPart1 = () => {
-    window.scrollTo(0, 0);
+    scrollToTop();
     setShowOverlay(true);
     setCurrentStep(0);
     setPhase('part2-overlay');
@@ -317,50 +271,68 @@ export default function AssessmentForm() {
   };
 
   const finishPart2 = () => {
-    window.scrollTo(0, 0);
+    scrollToTop();
     setShowOverlay(true);
-    setCurrentStep(0);
     setPhase('part3-overlay');
     setEntranceOn(false);
+    setSubPartIdx(0);
+    setSubCurrentStep(0);
   };
 
-  const finishCurrentSubPart = () => {
-    if (part3SubIndex < part3Groups.length - 1) {
-      window.scrollTo(0, 0);
-      setPart3SubIndex(prev => prev + 1);
-      setCurrentStep(0);
-      setEntranceOn(false);
+  const goSubNext = () => {
+    if (!isValidField(currentFields[subCurrentStep])) return;
+    if (subCurrentStep < totalSubSteps - 1) {
+      setSubDirection(1);
+      setSubCurrentStep(p => p + 1);
     }
   };
 
+  const goSubBack = () => {
+    if (subCurrentStep > 0) {
+      setSubDirection(-1);
+      setSubCurrentStep(p => p - 1);
+    }
+  };
+
+  const finishSubPart = () => {
+    scrollToTop();
+    if (subPartIdx < subParts.length - 1) {
+      setSubPartIdx(p => p + 1);
+      setSubCurrentStep(0);
+    }
+  };
+
+  const prevSubPart = () => {
+    if (subPartIdx > 0) {
+      scrollToTop();
+      setSubPartIdx(p => p - 1);
+      setSubCurrentStep(0);
+    }
+  };
+
+  const handleAdditionalChange = (name, value) => {
+    setAdditional(prev => ({ ...prev, [name]: value }));
+  };
+
   const handleSubmit = async () => {
-    if (!allPart1Answered || !allPart2Answered || !allPart3Answered) return;
+    if (!allPart3Valid || !allPart1Answered || !allPart2Answered) return;
     setLoading(true);
     const phq9Total = phq9Answers.reduce((a, b) => a + b, 0);
     const gad7Total = gad7Answers.reduce((a, b) => a + b, 0);
-    const payload = {
-      phq9_answers: phq9Answers,
-      gad7_answers: gad7Answers,
-      ...additional,
-    };
+    const payload = { phq9_answers: phq9Answers, gad7_answers: gad7Answers, ...additional };
     try {
       const response = await axios.post(`${API_BASE}/assess`, payload);
       const prediction = response.data;
       navigate('/results', { state: { prediction, formData: payload } });
     } catch (err) {
-      console.error(err);
-      alert(lang === 'th' ? 'ไม่สามารถส่งข้อมูลได้ ใช้ผลลัพธ์ในเครื่อง' : 'Submission failed, using offline scoring.');
+      console.error('Submission failed:', err);
+      alert(lang === 'th' ? 'ไม่สามารถส่งข้อมูลได้ กำลังใช้ผลลัพธ์จากเครื่อง' : 'Submission failed, using offline scoring.');
       const prediction = {
-        phq9_total: phq9Total,
-        phq9_severity: phq9Severity(phq9Total, lang).level,
-        gad7_total: gad7Total,
-        gad7_severity: gad7Severity(gad7Total, lang).level,
-        burnout_level: null,
-        seeks_mental_health_support_score: null,
-        seeks_mental_health_support: null,
-        job_change_intention_score: null,
-        job_change_intention: null,
-        warnings: ['Backend not available – using local scoring only.'],
+        phq9_total: phq9Total, phq9_severity: phq9Severity(phq9Total, lang).level,
+        gad7_total: gad7Total, gad7_severity: gad7Severity(gad7Total, lang).level,
+        burnout_level: null, seeks_mental_health_support_score: null, seeks_mental_health_support: null,
+        job_change_intention_score: null, job_change_intention: null,
+        warnings: ['Backend unavailable – local scoring only.'],
       };
       navigate('/results', { state: { prediction, formData: payload } });
     } finally {
@@ -370,7 +342,6 @@ export default function AssessmentForm() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-nurture-cream via-white to-nurture-sand py-8 px-4 relative">
-      {/* Overlay – FIXED to viewport */}
       <AnimatePresence>
         {showOverlay && (phase === 'part1-overlay' || phase === 'part2-overlay' || phase === 'part3-overlay') && (
           <motion.div
@@ -381,13 +352,7 @@ export default function AssessmentForm() {
             exit="exit"
             className="fixed inset-0 z-50 flex items-center justify-center bg-nurture-cream/10 backdrop-blur-xl"
           >
-            <motion.div
-              variants={textContainer}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              className="text-center"
-            >
+            <motion.div variants={textContainer} initial="hidden" animate="visible" exit="exit" className="text-center">
               <motion.div variants={textItem} className="mb-2">
                 <h2 className="text-5xl md:text-6xl font-serif font-bold text-stone-800">
                   {phase === 'part1-overlay' ? 'Part 1' : phase === 'part2-overlay' ? 'Part 2' : 'Part 3'}
@@ -399,7 +364,7 @@ export default function AssessmentForm() {
                     ? (lang === 'th' ? 'แบบประเมินภาวะซึมเศร้า (PHQ‑9)' : 'Depression Screening (PHQ‑9)')
                     : phase === 'part2-overlay'
                     ? (lang === 'th' ? 'แบบประเมินความวิตกกังวล (GAD‑7)' : 'Anxiety Screening (GAD‑7)')
-                    : (lang === 'th' ? 'ข้อมูลเพิ่มเติม' : 'Additional Information')}
+                    : (lang === 'th' ? 'ข้อมูลเพิ่มเติมสำหรับการวิเคราะห์' : 'Additional Information')}
                 </p>
               </motion.div>
             </motion.div>
@@ -407,245 +372,220 @@ export default function AssessmentForm() {
         )}
       </AnimatePresence>
 
-      {/* -------- Part 3: Sub‑grouped additional fields -------- */}
+      {/* ---- Part 3 ---- */}
       {isPart3 && (
-        <motion.div
-          className="max-w-lg mx-auto relative z-10"
-          variants={part3Container}
-          initial="hidden"
-          animate="visible"
-          key={`part3-${part3SubIndex}`}
-        >
-          {/* Group header */}
+        <div className="max-w-lg mx-auto relative z-10">
           <div className="mb-6">
-            <h2 className="text-xl font-serif font-bold text-stone-800 mb-1">
-              {lang === 'th' ? currentGroup.titleTh : currentGroup.titleEn}
-            </h2>
-            <p className="text-xs text-stone-500">
-              {lang === 'th'
-                ? `ส่วนย่อย ${part3SubIndex + 1} จาก ${part3Groups.length}`
-                : `Sub‑part ${part3SubIndex + 1} of ${part3Groups.length}`}
-            </p>
-          </div>
-
-          {/* Progress bar */}
-          <div className="mb-2">
-            <div className="flex items-center justify-between text-xs text-stone-500 mb-2">
-              <span>
-                {viewMode === 'single'
-                  ? `${lang === 'th' ? 'คำถามที่' : 'Question'} ${currentStep + 1} ${lang === 'th' ? 'จาก' : 'of'} ${groupTotalSteps}`
-                  : `${groupTotalSteps} ${lang === 'th' ? 'คำถาม' : 'questions'}`
-                }
-              </span>
-              {viewMode === 'single' && <span>{Math.round(groupProgress)}%</span>}
+            <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
+              <span>{lang === 'th' ? 'ส่วนที่ 3' : 'Part 3'} · {subPartIdx + 1}/{subParts.length}</span>
+              <span>{lang === 'th' ? currentSubPart.titleTh : currentSubPart.titleEn}</span>
             </div>
-            <div className="w-full bg-stone-200 h-2 rounded-full overflow-hidden">
+            <div className="w-full bg-stone-200 h-1.5 rounded-full overflow-hidden">
               <motion.div
-                className="bg-stone-800 h-2 rounded-full"
+                className="bg-stone-800 h-1.5 rounded-full"
                 initial={{ width: 0 }}
-                animate={{ width: `${groupProgress}%` }}
+                animate={{ width: `${((subPartIdx) / subParts.length) * 100}%` }}
                 transition={{ duration: 0.3 }}
               />
             </div>
           </div>
 
-          {/* Toggle */}
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end mb-3">
             <button
               onClick={() => setViewMode(v => v === 'single' ? 'all' : 'single')}
               className="px-3 py-1.5 text-xs rounded-full border border-stone-300 text-stone-600 hover:bg-stone-100 transition"
             >
-              {viewMode === 'single'
-                ? (lang === 'th' ? 'แสดงทั้งหมด' : 'Show all')
-                : (lang === 'th' ? 'ทีละข้อ' : 'One by one')
-              }
+              {viewMode === 'single' ? (lang === 'th' ? 'แสดงทั้งหมด' : 'Show all') : (lang === 'th' ? 'ทีละข้อ' : 'One by one')}
             </button>
           </div>
 
-          {/* Card */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 md:p-8 border border-stone-200/50 shadow-sm min-h-[300px] flex flex-col justify-between">
-            {viewMode === 'single' ? (
-              <>
-                <AnimatePresence mode="wait" custom={direction}>
-                  <motion.div
-                    key={`p3-${part3SubIndex}-${currentStep}`}
-                    custom={direction}
-                    variants={fadeSlide}
-                    initial={entranceOn ? "initial" : false}
-                    animate="animate"
-                    exit="exit"
-                    className="flex-1"
-                  >
-                    <h2 className="text-lg md:text-xl font-serif font-semibold text-stone-800 mb-6">
-                      {lang === 'th' ? (groupQ.labelTh || groupQ.labelEn) : (groupQ.labelEn || groupQ.labelTh)}
-                    </h2>
-                    {groupQ.type === 'readonly' ? (
-                      <div className="text-stone-700 text-center text-2xl font-bold">{additional[groupQ.name]}</div>
-                    ) : groupQ.type === 'slider' ? (
-                      <div className="flex flex-col items-center">
-                        <div className="w-full flex items-center gap-4">
-                          <span className="text-xs text-stone-500">{groupQ.min}</span>
+          {viewMode === 'single' ? (
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 md:p-8 border border-stone-200/50 shadow-sm min-h-[300px] flex flex-col justify-between">
+              <AnimatePresence mode="wait" custom={subDirection}>
+                <motion.div
+                  key={`sub-${subPartIdx}-${subCurrentStep}`}
+                  custom={subDirection}
+                  variants={fadeSlide}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  className="flex-1"
+                >
+                  {(() => {
+                    const fieldName = currentFields[subCurrentStep];
+                    const cfg = fieldConfig[fieldName];
+                    const val = additional[fieldName];
+                    return (
+                      <div className="flex flex-col h-full">
+                        <label className="text-lg md:text-xl font-serif font-semibold text-stone-800 mb-4">
+                          {lang === 'th' ? cfg.labelTh : cfg.labelEn}
+                        </label>
+                        {cfg.type === 'slider' ? (
+                          <div className="flex flex-col items-center mt-4">
+                            <div className="w-full flex items-center gap-4">
+                              <span className="text-xs text-stone-500">{cfg.min}</span>
+                              <input
+                                type="range"
+                                min={cfg.min}
+                                max={cfg.max}
+                                step={cfg.step}
+                                value={val !== '' ? val : cfg.min}
+                                onChange={e => handleAdditionalChange(fieldName, Number(e.target.value))}
+                                className="flex-1 h-2 bg-stone-200 rounded-full appearance-none cursor-pointer accent-stone-800"
+                              />
+                              <span className="text-xs text-stone-500">{cfg.max === Infinity ? '∞' : cfg.max}</span>
+                            </div>
+                            <div className="mt-2 text-2xl font-bold text-stone-800">
+                              {val !== '' ? val : '—'}
+                            </div>
+                          </div>
+                        ) : cfg.type === 'select' ? (
+                          <select
+                            value={val}
+                            onChange={e => handleAdditionalChange(fieldName, e.target.value)}
+                            className="w-full border border-stone-300 rounded-xl px-4 py-3 text-stone-800 bg-white focus:ring-2 focus:ring-stone-500"
+                          >
+                            {cfg.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                          </select>
+                        ) : (
                           <input
-                            type="range"
-                            min={groupQ.min}
-                            max={groupQ.max}
-                            step={groupQ.step}
-                            value={additional[groupQ.name]}
-                            onChange={e => handleAdditionalChange(groupQ.name, Number(e.target.value))}
-                            className="flex-1 h-2 bg-stone-200 rounded-full appearance-none cursor-pointer accent-stone-800"
+                            type="number"
+                            min={cfg.min}
+                            max={cfg.max === Infinity ? undefined : cfg.max}
+                            step={cfg.step}
+                            placeholder={cfg.placeholder}
+                            value={val}
+                            onChange={e => handleAdditionalChange(fieldName, e.target.value)}
+                            className={`w-full border rounded-xl px-4 py-3 text-stone-800 focus:ring-2 focus:ring-stone-500 ${!isValidField(fieldName) && val !== '' ? 'border-red-400 bg-red-50' : 'border-stone-300'}`}
                           />
-                          <span className="text-xs text-stone-500">{groupQ.max}</span>
-                        </div>
-                        <div className="mt-2 text-lg font-bold text-stone-800">{additional[groupQ.name]}</div>
-                      </div>
-                    ) : groupQ.type === 'select' ? (
-                      <select
-                        value={additional[groupQ.name]}
-                        onChange={e => handleAdditionalChange(groupQ.name, e.target.value)}
-                        className="w-full border border-stone-300 rounded-xl px-4 py-3 text-stone-800 bg-white focus:ring-2 focus:ring-stone-500"
-                      >
-                        {groupQ.options.map(opt => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      /* number input */
-                      <div>
-                        <input
-                          type="number"
-                          min={groupQ.min}
-                          max={groupQ.max}
-                          step={groupQ.step}
-                          value={additional[groupQ.name]}
-                          onChange={e => handleAdditionalChange(groupQ.name, e.target.value)}
-                          className={`w-full border rounded-xl px-4 py-2 text-stone-800 focus:ring-2 focus:ring-stone-500 transition-all ${
-                            !groupCanProceed && additional[groupQ.name] !== '' ? 'border-red-400 bg-red-50' : 'border-stone-300'
-                          }`}
-                        />
-                        {!groupCanProceed && additional[groupQ.name] !== '' && (
-                          <p className="text-xs text-red-600 mt-1">
-                            {lang === 'th' ? `กรุณากรอกค่าระหว่าง ${groupQ.min} – ${groupQ.max}` : `Please enter a value between ${groupQ.min} and ${groupQ.max}.`}
+                        )}
+                        {!isValidField(fieldName) && val !== '' && (
+                          <p className="text-xs text-red-600 mt-2">
+                            {lang === 'th' ? `กรุณากรอกค่า ${cfg.min} ขึ้นไป` : `Please enter a value ${cfg.min} or greater.`}
                           </p>
                         )}
                       </div>
-                    )}
-                  </motion.div>
-                </AnimatePresence>
-
-                <div className="flex justify-between mt-8 pt-4 border-t border-stone-100">
-                  {currentStep > 0 ? (
-                    <button onClick={goBack} className="px-4 py-2 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition">
-                      {lang === 'th' ? '← ย้อนกลับ' : '← Back'}
-                    </button>
-                  ) : <div />}
-                  {currentStep < groupTotalSteps - 1 ? (
-                    <button onClick={goNext} disabled={!groupCanProceed}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${groupCanProceed ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {lang === 'th' ? 'ถัดไป →' : 'Next →'}
-                    </button>
-                  ) : part3SubIndex < part3Groups.length - 1 ? (
-                    <button onClick={finishCurrentSubPart} disabled={!allGroupAnswered}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allGroupAnswered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {lang === 'th' ? 'ส่วนถัดไป →' : 'Next Part →'}
-                    </button>
-                  ) : (
-                    <button onClick={handleSubmit} disabled={!allGroupAnswered || loading}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allGroupAnswered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {loading ? (lang === 'th' ? 'กำลังส่ง...' : 'Submitting...') : (lang === 'th' ? 'ดูผลลัพธ์' : 'View Results')}
-                    </button>
-                  )}
-                </div>
-              </>
-            ) : (
-              /* All at once for this sub‑part */
-              <>
-                <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 pr-1">
-                  {groupFields.map((field, idx) => {
-                    const val = additional[field.name];
-                    const isValid = field.type === 'readonly' ? true :
-                      field.type === 'select' ? true :
-                      (val !== '' && val !== null && !isNaN(Number(val)) && Number(val) >= field.min && Number(val) <= field.max);
-                    return (
-                      <div key={field.name}>
-                        <h3 className="text-md font-serif font-semibold text-stone-800 mb-3">
-                          {idx + 1}. {lang === 'th' ? (field.labelTh || field.labelEn) : (field.labelEn || field.labelTh)}
-                        </h3>
-                        {field.type === 'readonly' ? (
-                          <div className="text-stone-700 text-center text-2xl font-bold">{val}</div>
-                        ) : field.type === 'slider' ? (
-                          <div className="flex flex-col items-center">
-                            <div className="w-full flex items-center gap-3">
-                              <span className="text-xs text-stone-500">{field.min}</span>
-                              <input
-                                type="range"
-                                min={field.min}
-                                max={field.max}
-                                step={field.step}
-                                value={val}
-                                onChange={e => handleAdditionalChange(field.name, Number(e.target.value))}
-                                className="flex-1 h-2 bg-stone-200 rounded-full appearance-none cursor-pointer accent-stone-800"
-                              />
-                              <span className="text-xs text-stone-500">{field.max}</span>
-                            </div>
-                            <div className="mt-1 text-lg font-bold text-stone-800">{val}</div>
-                          </div>
-                        ) : field.type === 'select' ? (
-                          <select
-                            value={val}
-                            onChange={e => handleAdditionalChange(field.name, e.target.value)}
-                            className="w-full border border-stone-300 rounded-xl px-4 py-2 text-stone-800 bg-white focus:ring-2 focus:ring-stone-500"
-                          >
-                            {field.options.map(opt => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <div>
-                            <input
-                              type="number"
-                              min={field.min}
-                              max={field.max}
-                              step={field.step}
-                              value={val}
-                              onChange={e => handleAdditionalChange(field.name, e.target.value)}
-                              className={`w-full border rounded-xl px-4 py-2 text-stone-800 focus:ring-2 focus:ring-stone-500 transition-all ${
-                                !isValid && val !== '' ? 'border-red-400 bg-red-50' : 'border-stone-300'
-                              }`}
-                            />
-                            {!isValid && val !== '' && (
-                              <p className="text-xs text-red-600 mt-1">
-                                {lang === 'th' ? `กรุณากรอกค่าระหว่าง ${field.min} – ${field.max}` : `Please enter a value between ${field.min} and ${field.max}.`}
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
                     );
-                  })}
-                </div>
-                <div className="flex justify-end mt-8 pt-4 border-t border-stone-100">
-                  {part3SubIndex < part3Groups.length - 1 ? (
-                    <button onClick={finishCurrentSubPart} disabled={!allGroupAnswered}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allGroupAnswered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {lang === 'th' ? 'ส่วนถัดไป →' : 'Next Part →'}
-                    </button>
-                  ) : (
-                    <button onClick={handleSubmit} disabled={!allGroupAnswered || loading}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allGroupAnswered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {loading ? (lang === 'th' ? 'กำลังส่ง...' : 'Submitting...') : (lang === 'th' ? 'ดูผลลัพธ์' : 'View Results')}
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </motion.div>
+                  })()}
+                </motion.div>
+              </AnimatePresence>
+
+              <div className="flex justify-between mt-8 pt-4 border-t border-stone-100">
+                {subCurrentStep > 0 || subPartIdx > 0 ? (
+                  <button
+                    onClick={() => { if (subCurrentStep > 0) { goSubBack(); } else { prevSubPart(); } }}
+                    className="px-4 py-2 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition"
+                  >
+                    {lang === 'th' ? '← ย้อนกลับ' : '← Back'}
+                  </button>
+                ) : <div />}
+                {subCurrentStep < totalSubSteps - 1 ? (
+                  <button onClick={goSubNext} disabled={!isValidField(currentFields[subCurrentStep])}
+                    className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${isValidField(currentFields[subCurrentStep]) ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}
+                  >
+                    {lang === 'th' ? 'ถัดไป →' : 'Next →'}
+                  </button>
+                ) : subPartIdx < subParts.length - 1 ? (
+                  <button onClick={finishSubPart} disabled={!allSubFieldsValid}
+                    className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allSubFieldsValid ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}
+                  >
+                    {lang === 'th' ? 'หมวดถัดไป →' : 'Next category →'}
+                  </button>
+                ) : (
+                  <button onClick={handleSubmit} disabled={!allPart3Valid || loading}
+                    className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart3Valid ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}
+                  >
+                    {loading ? (lang === 'th' ? 'กำลังส่ง...' : 'Submitting...') : (lang === 'th' ? 'ดูผลลัพธ์' : 'View Results')}
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 md:p-8 border border-stone-200/50 shadow-sm">
+              <h3 className="text-xl font-serif font-semibold text-stone-800 mb-6">
+                {lang === 'th' ? currentSubPart.titleTh : currentSubPart.titleEn}
+              </h3>
+              <div className="space-y-5">
+                {currentFields.map(field => {
+                  const cfg = fieldConfig[field];
+                  const val = additional[field];
+                  return (
+                    <div key={field}>
+                      <label className="block text-sm font-medium text-stone-700 mb-1">
+                        {lang === 'th' ? cfg.labelTh : cfg.labelEn}
+                      </label>
+                      {cfg.type === 'slider' ? (
+                        <div className="flex items-center gap-4">
+                          <span className="text-xs text-stone-500">{cfg.min}</span>
+                          <input
+                            type="range"
+                            min={cfg.min}
+                            max={cfg.max}
+                            step={cfg.step}
+                            value={val !== '' ? val : cfg.min}
+                            onChange={e => handleAdditionalChange(field, Number(e.target.value))}
+                            className="flex-1 h-2 bg-stone-200 rounded-full appearance-none cursor-pointer accent-stone-800"
+                          />
+                          <span className="text-xs text-stone-500">{cfg.max === Infinity ? '∞' : cfg.max}</span>
+                          <span className="ml-2 font-bold text-stone-800 w-8 text-right">{val !== '' ? val : '—'}</span>
+                        </div>
+                      ) : cfg.type === 'select' ? (
+                        <select
+                          value={val}
+                          onChange={e => handleAdditionalChange(field, e.target.value)}
+                          className="w-full border border-stone-300 rounded-xl px-4 py-2 text-stone-800 bg-white focus:ring-2 focus:ring-stone-500"
+                        >
+                          {cfg.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      ) : (
+                        <input
+                          type="number"
+                          min={cfg.min}
+                          max={cfg.max === Infinity ? undefined : cfg.max}
+                          step={cfg.step}
+                          placeholder={cfg.placeholder}
+                          value={val}
+                          onChange={e => handleAdditionalChange(field, e.target.value)}
+                          className={`w-full border rounded-xl px-4 py-2 text-stone-800 focus:ring-2 focus:ring-stone-500 ${!isValidField(field) && val !== '' ? 'border-red-400 bg-red-50' : 'border-stone-300'}`}
+                        />
+                      )}
+                      {!isValidField(field) && val !== '' && (
+                        <p className="text-xs text-red-600 mt-1">
+                          {lang === 'th' ? `กรุณากรอกค่า ${cfg.min} ขึ้นไป` : `Please enter a value ${cfg.min} or greater.`}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between mt-8 pt-4 border-t border-stone-100">
+                {subPartIdx > 0 ? (
+                  <button onClick={prevSubPart} className="px-4 py-2 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition">
+                    {lang === 'th' ? '← ย้อนกลับ' : '← Back'}
+                  </button>
+                ) : <div />}
+                {subPartIdx < subParts.length - 1 ? (
+                  <button onClick={finishSubPart} disabled={!allSubFieldsValid}
+                    className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allSubFieldsValid ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}
+                  >
+                    {lang === 'th' ? 'หมวดถัดไป →' : 'Next category →'}
+                  </button>
+                ) : (
+                  <button onClick={handleSubmit} disabled={!allPart3Valid || loading}
+                    className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart3Valid ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}
+                  >
+                    {loading ? (lang === 'th' ? 'กำลังส่ง...' : 'Submitting...') : (lang === 'th' ? 'ดูผลลัพธ์' : 'View Results')}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* -------- Part 1 & 2 (question cards) -------- */}
+      {/* ---- Part 1 & 2 ---- */}
       {(isPart1 || isPart2) && (
         <div className="max-w-lg mx-auto relative z-10">
-          {/* Progress bar */}
           <div className="mb-2">
             <div className="flex items-center justify-between text-xs text-stone-500 mb-2">
               <span>
@@ -659,73 +599,29 @@ export default function AssessmentForm() {
               {viewMode === 'single' && <span>{Math.round(progress)}%</span>}
             </div>
             <div className="w-full bg-stone-200 h-2 rounded-full overflow-hidden">
-              <motion.div
-                className="bg-stone-800 h-2 rounded-full"
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.3 }}
-              />
+              <motion.div className="bg-stone-800 h-2 rounded-full" initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.3 }} />
             </div>
           </div>
-
-          {/* Toggle */}
           <div className="flex justify-end mb-4">
             <button
               onClick={() => setViewMode(v => v === 'single' ? 'all' : 'single')}
               className="px-3 py-1.5 text-xs rounded-full border border-stone-300 text-stone-600 hover:bg-stone-100 transition"
             >
-              {viewMode === 'single'
-                ? (lang === 'th' ? 'แสดงทั้งหมด' : 'Show all')
-                : (lang === 'th' ? 'ทีละข้อ' : 'One by one')
-              }
+              {viewMode === 'single' ? (lang === 'th' ? 'แสดงทั้งหมด' : 'Show all') : (lang === 'th' ? 'ทีละข้อ' : 'One by one')}
             </button>
           </div>
-
-          {/* Card */}
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 md:p-8 border border-stone-200/50 shadow-sm min-h-[300px] flex flex-col justify-between">
             {viewMode === 'single' ? (
               <>
                 <AnimatePresence mode="wait" custom={direction}>
-                  <motion.div
-                    key={`${isPart1 ? 'p1' : 'p2'}-${currentStep}`}
-                    custom={direction}
-                    variants={fadeSlide}
-                    initial={entranceOn ? "initial" : false}
-                    animate="animate"
-                    exit="exit"
-                    className="flex-1"
-                  >
-                    <h2 className="text-lg md:text-xl font-serif font-semibold text-stone-800 mb-6">
-                      {q}
-                    </h2>
+                  <motion.div key={`${isPart1 ? 'p1' : 'p2'}-${currentStep}`} custom={direction} variants={fadeSlide} initial={entranceOn ? "initial" : false} animate="animate" exit="exit" className="flex-1">
+                    <h2 className="text-lg md:text-xl font-serif font-semibold text-stone-800 mb-6">{q}</h2>
                     <div className="space-y-3">
-                      {choices.map((choice) => (
-                        <label
-                          key={choice.value}
-                          className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
-                            answers[currentStep] === choice.value
-                              ? 'bg-nurture-sand/80 border-stone-400 shadow-sm ring-1 ring-stone-300 scale-[1.01]'
-                              : 'bg-white border-stone-200 hover:bg-nurture-sand/30 hover:shadow-sm hover:border-stone-300 hover:scale-[1.01]'
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name={`q-${phase}-${currentStep}`}
-                            value={choice.value}
-                            checked={answers[currentStep] === choice.value}
-                            onChange={() => handleSelect(choice.value)}
-                            className="hidden"
-                          />
-                          <span
-                            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                              answers[currentStep] === choice.value
-                                ? 'border-stone-600 bg-stone-600'
-                                : 'border-stone-300'
-                            }`}
-                          >
-                            {answers[currentStep] === choice.value && (
-                              <span className="w-2.5 h-2.5 rounded-full bg-white" />
-                            )}
+                      {choices.map(choice => (
+                        <label key={choice.value} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 ${answers[currentStep] === choice.value ? 'bg-nurture-sand/80 border-stone-400 shadow-sm ring-1 ring-stone-300 scale-[1.01]' : 'bg-white border-stone-200 hover:bg-nurture-sand/30 hover:shadow-sm hover:border-stone-300 hover:scale-[1.01]'}`}>
+                          <input type="radio" name={`q-${phase}-${currentStep}`} value={choice.value} checked={answers[currentStep] === choice.value} onChange={() => handleSelect(choice.value)} className="hidden" />
+                          <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${answers[currentStep] === choice.value ? 'border-stone-600 bg-stone-600' : 'border-stone-300'}`}>
+                            {answers[currentStep] === choice.value && <span className="w-2.5 h-2.5 rounded-full bg-white" />}
                           </span>
                           <span className="text-stone-700">{choice.label}</span>
                         </label>
@@ -733,28 +629,16 @@ export default function AssessmentForm() {
                     </div>
                   </motion.div>
                 </AnimatePresence>
-
                 <div className="flex justify-between mt-8 pt-4 border-t border-stone-100">
                   {currentStep > 0 ? (
-                    <button onClick={goBack} className="px-4 py-2 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition">
-                      {lang === 'th' ? '← ย้อนกลับ' : '← Back'}
-                    </button>
+                    <button onClick={goBack} className="px-4 py-2 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition">{lang === 'th' ? '← ย้อนกลับ' : '← Back'}</button>
                   ) : <div />}
                   {!isLastQ ? (
-                    <button onClick={goNext} disabled={!answers[currentStep]}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${answers[currentStep] ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {lang === 'th' ? 'ถัดไป →' : 'Next →'}
-                    </button>
+                    <button onClick={goNext} disabled={!canProceed} className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${canProceed ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>{lang === 'th' ? 'ถัดไป →' : 'Next →'}</button>
                   ) : isPart1 ? (
-                    <button onClick={finishPart1} disabled={!allPart1Answered}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart1Answered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {lang === 'th' ? 'ส่วนที่ 2 →' : 'Part 2 →'}
-                    </button>
+                    <button onClick={finishPart1} disabled={!allPart1Answered} className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart1Answered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>{lang === 'th' ? 'ส่วนที่ 2 →' : 'Part 2 →'}</button>
                   ) : (
-                    <button onClick={finishPart2} disabled={!allPart2Answered}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart2Answered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {lang === 'th' ? 'ส่วนที่ 3 →' : 'Part 3 →'}
-                    </button>
+                    <button onClick={finishPart2} disabled={!allPart2Answered} className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart2Answered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>{lang === 'th' ? 'ส่วนที่ 3 →' : 'Part 3 →'}</button>
                   )}
                 </div>
               </>
@@ -763,37 +647,13 @@ export default function AssessmentForm() {
                 <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 pr-1">
                   {questions.map((question, idx) => (
                     <div key={idx}>
-                      <h3 className="text-md font-serif font-semibold text-stone-800 mb-3">
-                        {idx + 1}. {question}
-                      </h3>
+                      <h3 className="text-md font-serif font-semibold text-stone-800 mb-3">{idx + 1}. {question}</h3>
                       <div className="space-y-2">
-                        {choices.map((choice) => (
-                          <label
-                            key={choice.value}
-                            className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all duration-200 ${
-                              answers[idx] === choice.value
-                                ? 'bg-nurture-sand/80 border-stone-400 shadow-sm ring-1 ring-stone-300 scale-[1.01]'
-                                : 'bg-white border-stone-200 hover:bg-nurture-sand/30 hover:shadow-sm hover:border-stone-300 hover:scale-[1.01]'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name={`q-${phase}-${idx}`}
-                              value={choice.value}
-                              checked={answers[idx] === choice.value}
-                              onChange={() => handleSelect(choice.value, idx)}
-                              className="hidden"
-                            />
-                            <span
-                              className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                                answers[idx] === choice.value
-                                  ? 'border-stone-600 bg-stone-600'
-                                  : 'border-stone-300'
-                              }`}
-                            >
-                              {answers[idx] === choice.value && (
-                                <span className="w-2.5 h-2.5 rounded-full bg-white" />
-                              )}
+                        {choices.map(choice => (
+                          <label key={choice.value} className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-all duration-200 ${answers[idx] === choice.value ? 'bg-nurture-sand/80 border-stone-400 shadow-sm ring-1 ring-stone-300 scale-[1.01]' : 'bg-white border-stone-200 hover:bg-nurture-sand/30 hover:shadow-sm hover:border-stone-300 hover:scale-[1.01]'}`}>
+                            <input type="radio" name={`q-${phase}-${idx}`} value={choice.value} checked={answers[idx] === choice.value} onChange={() => handleSelect(choice.value, idx)} className="hidden" />
+                            <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${answers[idx] === choice.value ? 'border-stone-600 bg-stone-600' : 'border-stone-300'}`}>
+                              {answers[idx] === choice.value && <span className="w-2.5 h-2.5 rounded-full bg-white" />}
                             </span>
                             <span className="text-stone-700 text-sm">{choice.label}</span>
                           </label>
@@ -804,15 +664,9 @@ export default function AssessmentForm() {
                 </div>
                 <div className="flex justify-end mt-8 pt-4 border-t border-stone-100">
                   {isPart1 ? (
-                    <button onClick={finishPart1} disabled={!allPart1Answered}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart1Answered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {lang === 'th' ? 'ส่วนที่ 2 →' : 'Part 2 →'}
-                    </button>
+                    <button onClick={finishPart1} disabled={!allPart1Answered} className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart1Answered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>{lang === 'th' ? 'ส่วนที่ 2 →' : 'Part 2 →'}</button>
                   ) : (
-                    <button onClick={finishPart2} disabled={!allPart2Answered}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart2Answered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
-                      {lang === 'th' ? 'ส่วนที่ 3 →' : 'Part 3 →'}
-                    </button>
+                    <button onClick={finishPart2} disabled={!allPart2Answered} className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allPart2Answered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>{lang === 'th' ? 'ส่วนที่ 3 →' : 'Part 3 →'}</button>
                   )}
                 </div>
               </>
