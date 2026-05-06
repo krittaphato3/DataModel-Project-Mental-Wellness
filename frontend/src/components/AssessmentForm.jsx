@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
@@ -49,7 +49,6 @@ const gad7QuestionsEn = [
   'Feeling afraid as if something awful might happen',
 ];
 
-/* ---------- Answer choices ---------- */
 const choicesTh = [
   { value: 0, label: 'ไม่มีเลย' },
   { value: 1, label: 'มีบางวันหรือเป็นบางครั้ง' },
@@ -131,23 +130,53 @@ const part3Item = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: 'easeOut' } },
 };
 
-/* ---------- Additional fields for ML (Part 3) ---------- */
-const additionalFields = [
-  { name: 'stress_score', labelTh: 'คะแนนความเครียด', labelEn: 'Stress score', type: 'number', min: 0, max: 10, step: 0.5 },
-  { name: 'poor_balance_high_stress', labelTh: 'Poor work‑life balance / high stress (0-10)', labelEn: 'Poor work‑life balance / high stress (0-10)', type: 'number', min: 0, max: 10, step: 0.5 },
-  { name: 'job_satisfaction_score', labelTh: 'คะแนนความพึงพอใจในงาน', labelEn: 'Job satisfaction score', type: 'number', min: 0, max: 10, step: 0.5 },
-  { name: 'manager_support_score', labelTh: 'คะแนนการสนับสนุนจากหัวหน้า', labelEn: 'Manager support score', type: 'number', min: 0, max: 10, step: 0.5 },
-  { name: 'autonomy_score', labelTh: 'คะแนนความเป็นอิสระในงาน', labelEn: 'Autonomy score', type: 'number', min: 0, max: 10, step: 0.5 },
-  { name: 'meetings_per_day', labelTh: 'จำนวนการประชุมต่อวัน', labelEn: 'Meetings per day', type: 'number', min: 0, max: 20, step: 0.5 },
-  { name: 'work_hours_per_week', labelTh: 'ชั่วโมงทำงานต่อสัปดาห์', labelEn: 'Work hours per week', type: 'number', min: 0, max: 120, step: 1 },
-  { name: 'deadline_pressure_score', labelTh: 'คะแนนความกดดันจากเส้นตาย', labelEn: 'Deadline pressure score', type: 'number', min: 0, max: 10, step: 0.5 },
-  { name: 'work_life_balance_score', labelTh: 'คะแนนสมดุลชีวิตและการทำงาน', labelEn: 'Work‑life balance score', type: 'number', min: 0, max: 10, step: 0.5 },
-  { name: 'sleep_hours_per_night', labelTh: 'ชั่วโมงนอนต่อคืน', labelEn: 'Sleep hours per night', type: 'number', min: 0, max: 24, step: 0.5 },
-  { name: 'exercise_days_per_week', labelTh: 'จำนวนวันที่ออกกำลังกายต่อสัปดาห์', labelEn: 'Exercise days per week', type: 'number', min: 0, max: 7, step: 1 },
-  { name: 'vacation_days_taken', labelTh: 'จำนวนวันลาพักร้อนที่ใช้ไป', labelEn: 'Vacation days taken', type: 'number', min: 0, max: 365, step: 1 },
-  { name: 'social_support_score', labelTh: 'คะแนนการสนับสนุนทางสังคม', labelEn: 'Social support score', type: 'number', min: 0, max: 10, step: 0.5 },
-  { name: 'therapy_access', labelTh: 'เข้าถึงการบำบัดหรือไม่', labelEn: 'Therapy access', type: 'select', options: ['No', 'Yes'] },
-  { name: 'salary_usd', labelTh: 'เงินเดือน (USD)', labelEn: 'Salary (USD)', type: 'number', min: 0, max: 1000000, step: 1000 },
+/* ---------- Part 3 sub‑group definitions ---------- */
+const part3Groups = [
+  {
+    key: 'mental',
+    titleTh: 'สุขภาพจิต',
+    titleEn: 'Mental Health & Psychological',
+    fields: [
+      { name: 'phq9_score', labelTh: 'คะแนน PHQ‑9 (คำนวณจากส่วนที่ 1)', labelEn: 'PHQ‑9 Score (from Part 1)', type: 'readonly' },
+      { name: 'gad7_score', labelTh: 'คะแนน GAD‑7 (คำนวณจากส่วนที่ 2)', labelEn: 'GAD‑7 Score (from Part 2)', type: 'readonly' },
+      { name: 'stress_score', labelTh: 'คะแนนความเครียด (0‑10)', labelEn: 'Stress score (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
+      { name: 'poor_balance_high_stress', labelTh: 'ภาระงาน / ความเครียด (0‑10)', labelEn: 'Poor balance / high stress (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
+    ],
+  },
+  {
+    key: 'work',
+    titleTh: 'สภาพแวดล้อมการทำงาน',
+    titleEn: 'Work Environment & Job Conditions',
+    fields: [
+      { name: 'job_satisfaction_score', labelTh: 'ความพึงพอใจในงาน (0‑10)', labelEn: 'Job satisfaction (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
+      { name: 'manager_support_score', labelTh: 'การสนับสนุนจากหัวหน้า (0‑10)', labelEn: 'Manager support (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
+      { name: 'autonomy_score', labelTh: 'ความเป็นอิสระในงาน (0‑10)', labelEn: 'Autonomy (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
+      { name: 'meetings_per_day', labelTh: 'ประชุมต่อวัน (0‑20)', labelEn: 'Meetings per day (0‑20)', type: 'number', min: 0, max: 20, step: 0.5 },
+      { name: 'work_hours_per_week', labelTh: 'ชั่วโมงทำงานต่อสัปดาห์ (0‑120)', labelEn: 'Work hours per week (0‑120)', type: 'number', min: 0, max: 120, step: 1 },
+      { name: 'deadline_pressure_score', labelTh: 'ความกดดันจากเส้นตาย (0‑10)', labelEn: 'Deadline pressure (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
+      { name: 'work_life_balance_score', labelTh: 'สมดุลชีวิต‑งาน (0‑10)', labelEn: 'Work‑life balance (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
+    ],
+  },
+  {
+    key: 'lifestyle',
+    titleTh: 'ไลฟ์สไตล์และสุขภาพ',
+    titleEn: 'Lifestyle & Health',
+    fields: [
+      { name: 'sleep_hours_per_night', labelTh: 'ชั่วโมงนอนต่อคืน (0‑24)', labelEn: 'Sleep hours per night (0‑24)', type: 'number', min: 0, max: 24, step: 0.5 },
+      { name: 'exercise_days_per_week', labelTh: 'วันที่ออกกำลังกายต่อสัปดาห์ (0‑7)', labelEn: 'Exercise days per week (0‑7)', type: 'number', min: 0, max: 7, step: 1 },
+      { name: 'vacation_days_taken', labelTh: 'วันลาพักร้อนที่ใช้ (0‑365)', labelEn: 'Vacation days taken (0‑365)', type: 'number', min: 0, max: 365, step: 1 },
+    ],
+  },
+  {
+    key: 'social_economic',
+    titleTh: 'สังคมและการเงิน',
+    titleEn: 'Social & Economic',
+    fields: [
+      { name: 'social_support_score', labelTh: 'การสนับสนุนทางสังคม (0‑10)', labelEn: 'Social support (0‑10)', type: 'slider', min: 0, max: 10, step: 0.5 },
+      { name: 'therapy_access', labelTh: 'เข้าถึงการบำบัด', labelEn: 'Therapy access', type: 'select', options: ['No', 'Yes'] },
+      { name: 'salary_usd', labelTh: 'เงินเดือน USD (0‑1,000,000)', labelEn: 'Salary USD (0‑1,000,000)', type: 'number', min: 0, max: 1000000, step: 1000 },
+    ],
+  },
 ];
 
 export default function AssessmentForm() {
@@ -165,14 +194,29 @@ export default function AssessmentForm() {
   const [entranceOn, setEntranceOn] = useState(false);
   const [viewMode, setViewMode] = useState('single');
 
+  const [part3SubIndex, setPart3SubIndex] = useState(0);
+
+  // additional fields state – same as before
   const [additional, setAdditional] = useState(() => {
     const initial = {};
-    additionalFields.forEach(f => {
-      initial[f.name] = f.type === 'select' ? (f.options ? f.options[0] : '') : '';
-    });
+    part3Groups.forEach(group =>
+      group.fields.forEach(f => {
+        initial[f.name] = f.type === 'select' ? (f.options ? f.options[0] : '') : '';
+      })
+    );
     return initial;
   });
 
+  // computed scores for readonly display
+  const computedPhq9 = useMemo(() => phq9Answers.filter(a => a !== null).reduce((a,b)=>a+b,0), [phq9Answers]);
+  const computedGad7 = useMemo(() => gad7Answers.filter(a => a !== null).reduce((a,b)=>a+b,0), [gad7Answers]);
+
+  // pre-fill readonly fields whenever computed scores change
+  useEffect(() => {
+    setAdditional(prev => ({ ...prev, phq9_score: computedPhq9, gad7_score: computedGad7 }));
+  }, [computedPhq9, computedGad7]);
+
+  /* overlay auto‑dismiss (for Part 1/2/3) */
   useEffect(() => {
     if (phase === 'part1-overlay' || phase === 'part2-overlay' || phase === 'part3-overlay') {
       setShowOverlay(true);
@@ -191,6 +235,7 @@ export default function AssessmentForm() {
   const isPart1 = phase === 'part1-overlay' || phase === 'part1';
   const isPart2 = phase === 'part2-overlay' || phase === 'part2';
   const isPart3 = phase === 'part3-overlay' || phase === 'part3';
+
   const questions = isPart1
     ? (lang === 'th' ? phq9QuestionsTh : phq9QuestionsEn)
     : isPart2
@@ -198,21 +243,42 @@ export default function AssessmentForm() {
     : [];
   const answers = isPart1 ? phq9Answers : isPart2 ? gad7Answers : [];
   const totalSteps = questions.length;
-  const progress = viewMode === 'single' ? ((currentStep) / totalSteps) * 100 : 100;
+  const progress = viewMode === 'single' ? ((currentStep) / (questions.length || 1)) * 100 : 100;
   const q = questions[currentStep];
   const choices = lang === 'th' ? choicesTh : choicesEn;
-  const isLastQ = currentStep === totalSteps - 1;
-  const canProceed = answers[currentStep] !== null;
+  const isLastQ = currentStep === (questions.length - 1);
 
   const allPart1Answered = phq9Answers.every(a => a !== null);
   const allPart2Answered = gad7Answers.every(a => a !== null);
-  const allPart3Answered = additionalFields.every(f => {
+
+  // -- Part 3 sub‑group helpers --
+  const currentGroup = part3Groups[part3SubIndex];
+  const groupFields = currentGroup?.fields || [];
+  const groupTotalSteps = groupFields.length;
+  const groupProgress = viewMode === 'single' ? ((currentStep) / (groupTotalSteps || 1)) * 100 : 100;
+  const groupQ = groupFields[currentStep];
+  const groupCanProceed = groupFields[currentStep] ? (additional[groupFields[currentStep].name] !== '' && additional[groupFields[currentStep].name] !== null) : false;
+  const allGroupAnswered = groupFields.every(f => {
     const val = additional[f.name];
-    if (f.type === 'number') return val !== '' && val !== null;
-    if (f.type === 'select') return val !== '';
-    return true;
+    if (f.type === 'number' || f.type === 'slider') {
+      if (val === '' || val === null) return false;
+      const num = Number(val);
+      return !isNaN(num) && num >= f.min && num <= f.max;
+    }
+    return val !== '' && val !== null;
   });
-  const allAnswered = allPart1Answered && allPart2Answered && allPart3Answered;
+  const allPart3Answered = part3Groups.every(group =>
+    group.fields.every(f => {
+      const val = additional[f.name];
+      if (f.type === 'readonly') return true; // readonly auto-filled
+      if (f.type === 'number' || f.type === 'slider') {
+        if (val === '' || val === null) return false;
+        const num = Number(val);
+        return !isNaN(num) && num >= f.min && num <= f.max;
+      }
+      return val !== '' && val !== null;
+    })
+  );
 
   const handleSelect = (value, index = currentStep) => {
     const newAnswers = [...answers];
@@ -225,7 +291,10 @@ export default function AssessmentForm() {
   };
 
   const goNext = () => {
-    if (!canProceed) return;
+    if (!groupCanProceed && isPart3) return;
+    if (isPart1 || isPart2) {
+      if (answers[currentStep] === null) return;
+    }
     setEntranceOn(true);
     setDirection(1);
     setCurrentStep((p) => p + 1);
@@ -250,36 +319,42 @@ export default function AssessmentForm() {
   const finishPart2 = () => {
     window.scrollTo(0, 0);
     setShowOverlay(true);
+    setCurrentStep(0);
     setPhase('part3-overlay');
     setEntranceOn(false);
   };
 
+  const finishCurrentSubPart = () => {
+    if (part3SubIndex < part3Groups.length - 1) {
+      window.scrollTo(0, 0);
+      setPart3SubIndex(prev => prev + 1);
+      setCurrentStep(0);
+      setEntranceOn(false);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!allAnswered) return;
+    if (!allPart1Answered || !allPart2Answered || !allPart3Answered) return;
     setLoading(true);
     const phq9Total = phq9Answers.reduce((a, b) => a + b, 0);
     const gad7Total = gad7Answers.reduce((a, b) => a + b, 0);
-    const phq9Sev = phq9Severity(phq9Total, lang);
-    const gad7Sev = gad7Severity(gad7Total, lang);
-
     const payload = {
       phq9_answers: phq9Answers,
       gad7_answers: gad7Answers,
       ...additional,
     };
-
     try {
       const response = await axios.post(`${API_BASE}/assess`, payload);
       const prediction = response.data;
-      navigate('/results', { state: { prediction, formData: { phq9_answers: phq9Answers, gad7_answers: gad7Answers, ...additional } } });
+      navigate('/results', { state: { prediction, formData: payload } });
     } catch (err) {
-      console.error('Assessment submission failed:', err);
+      console.error(err);
       alert(lang === 'th' ? 'ไม่สามารถส่งข้อมูลได้ ใช้ผลลัพธ์ในเครื่อง' : 'Submission failed, using offline scoring.');
       const prediction = {
         phq9_total: phq9Total,
-        phq9_severity: phq9Sev.level,
+        phq9_severity: phq9Severity(phq9Total, lang).level,
         gad7_total: gad7Total,
-        gad7_severity: gad7Sev.level,
+        gad7_severity: gad7Severity(gad7Total, lang).level,
         burnout_level: null,
         seeks_mental_health_support_score: null,
         seeks_mental_health_support: null,
@@ -287,7 +362,7 @@ export default function AssessmentForm() {
         job_change_intention: null,
         warnings: ['Backend not available – using local scoring only.'],
       };
-      navigate('/results', { state: { prediction, formData: { phq9_answers: phq9Answers, gad7_answers: gad7Answers, ...additional } } });
+      navigate('/results', { state: { prediction, formData: payload } });
     } finally {
       setLoading(false);
     }
@@ -295,7 +370,7 @@ export default function AssessmentForm() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-nurture-cream via-white to-nurture-sand py-8 px-4 relative">
-      {/* ---- Overlay ---- */}
+      {/* Overlay – FIXED to viewport */}
       <AnimatePresence>
         {showOverlay && (phase === 'part1-overlay' || phase === 'part2-overlay' || phase === 'part3-overlay') && (
           <motion.div
@@ -304,7 +379,7 @@ export default function AssessmentForm() {
             initial="hidden"
             animate="visible"
             exit="exit"
-            className="absolute inset-0 z-50 flex items-center justify-center bg-nurture-cream/10 backdrop-blur-xl"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-nurture-cream/10 backdrop-blur-xl"
           >
             <motion.div
               variants={textContainer}
@@ -332,69 +407,242 @@ export default function AssessmentForm() {
         )}
       </AnimatePresence>
 
-      {/* ---- Part 3 : Additional fields ---- */}
+      {/* -------- Part 3: Sub‑grouped additional fields -------- */}
       {isPart3 && (
         <motion.div
           className="max-w-lg mx-auto relative z-10"
           variants={part3Container}
           initial="hidden"
           animate="visible"
+          key={`part3-${part3SubIndex}`}
         >
-          <motion.div variants={part3Item} className="mb-8">
-            <h2 className="text-2xl font-serif font-bold text-stone-800 mb-2">
-              {lang === 'th' ? 'ข้อมูลเพิ่มเติมสำหรับการวิเคราะห์' : 'Additional Information for Analysis'}
+          {/* Group header */}
+          <div className="mb-6">
+            <h2 className="text-xl font-serif font-bold text-stone-800 mb-1">
+              {lang === 'th' ? currentGroup.titleTh : currentGroup.titleEn}
             </h2>
-            <p className="text-sm text-stone-500">
-              {lang === 'th' ? 'กรุณากรอกข้อมูลต่อไปนี้ให้ครบถ้วน' : 'Please fill in the following details.'}
+            <p className="text-xs text-stone-500">
+              {lang === 'th'
+                ? `ส่วนย่อย ${part3SubIndex + 1} จาก ${part3Groups.length}`
+                : `Sub‑part ${part3SubIndex + 1} of ${part3Groups.length}`}
             </p>
-          </motion.div>
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 md:p-8 border border-stone-200/50 shadow-sm">
-            <div className="space-y-5">
-              {additionalFields.map((field, idx) => (
-                <motion.div key={field.name} variants={part3Item} custom={idx}>
-                  <label className="block text-sm font-medium text-stone-700 mb-1">
-                    {lang === 'th' ? field.labelTh : field.labelEn}
-                  </label>
-                  {field.type === 'number' ? (
-                    <input
-                      type="number"
-                      min={field.min}
-                      max={field.max}
-                      step={field.step}
-                      value={additional[field.name]}
-                      onChange={e => handleAdditionalChange(field.name, e.target.value)}
-                      className="w-full border border-stone-300 rounded-xl px-4 py-2 text-stone-800 focus:ring-2 focus:ring-stone-500 transition-all"
-                    />
-                  ) : field.type === 'select' ? (
-                    <select
-                      value={additional[field.name]}
-                      onChange={e => handleAdditionalChange(field.name, e.target.value)}
-                      className="w-full border border-stone-300 rounded-xl px-4 py-2 text-stone-800 bg-white focus:ring-2 focus:ring-stone-500 transition-all"
-                    >
-                      {field.options.map(opt => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                  ) : null}
-                </motion.div>
-              ))}
+          </div>
+
+          {/* Progress bar */}
+          <div className="mb-2">
+            <div className="flex items-center justify-between text-xs text-stone-500 mb-2">
+              <span>
+                {viewMode === 'single'
+                  ? `${lang === 'th' ? 'คำถามที่' : 'Question'} ${currentStep + 1} ${lang === 'th' ? 'จาก' : 'of'} ${groupTotalSteps}`
+                  : `${groupTotalSteps} ${lang === 'th' ? 'คำถาม' : 'questions'}`
+                }
+              </span>
+              {viewMode === 'single' && <span>{Math.round(groupProgress)}%</span>}
+            </div>
+            <div className="w-full bg-stone-200 h-2 rounded-full overflow-hidden">
+              <motion.div
+                className="bg-stone-800 h-2 rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${groupProgress}%` }}
+                transition={{ duration: 0.3 }}
+              />
             </div>
           </div>
-          <motion.div variants={part3Item} className="flex justify-end mt-6">
+
+          {/* Toggle */}
+          <div className="flex justify-end mb-4">
             <button
-              onClick={handleSubmit}
-              disabled={!allPart3Answered || loading}
-              className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${
-                allPart3Answered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'
-              }`}
+              onClick={() => setViewMode(v => v === 'single' ? 'all' : 'single')}
+              className="px-3 py-1.5 text-xs rounded-full border border-stone-300 text-stone-600 hover:bg-stone-100 transition"
             >
-              {loading ? (lang === 'th' ? 'กำลังส่ง...' : 'Submitting...') : (lang === 'th' ? 'ดูผลลัพธ์' : 'View Results')}
+              {viewMode === 'single'
+                ? (lang === 'th' ? 'แสดงทั้งหมด' : 'Show all')
+                : (lang === 'th' ? 'ทีละข้อ' : 'One by one')
+              }
             </button>
-          </motion.div>
+          </div>
+
+          {/* Card */}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 md:p-8 border border-stone-200/50 shadow-sm min-h-[300px] flex flex-col justify-between">
+            {viewMode === 'single' ? (
+              <>
+                <AnimatePresence mode="wait" custom={direction}>
+                  <motion.div
+                    key={`p3-${part3SubIndex}-${currentStep}`}
+                    custom={direction}
+                    variants={fadeSlide}
+                    initial={entranceOn ? "initial" : false}
+                    animate="animate"
+                    exit="exit"
+                    className="flex-1"
+                  >
+                    <h2 className="text-lg md:text-xl font-serif font-semibold text-stone-800 mb-6">
+                      {lang === 'th' ? (groupQ.labelTh || groupQ.labelEn) : (groupQ.labelEn || groupQ.labelTh)}
+                    </h2>
+                    {groupQ.type === 'readonly' ? (
+                      <div className="text-stone-700 text-center text-2xl font-bold">{additional[groupQ.name]}</div>
+                    ) : groupQ.type === 'slider' ? (
+                      <div className="flex flex-col items-center">
+                        <div className="w-full flex items-center gap-4">
+                          <span className="text-xs text-stone-500">{groupQ.min}</span>
+                          <input
+                            type="range"
+                            min={groupQ.min}
+                            max={groupQ.max}
+                            step={groupQ.step}
+                            value={additional[groupQ.name]}
+                            onChange={e => handleAdditionalChange(groupQ.name, Number(e.target.value))}
+                            className="flex-1 h-2 bg-stone-200 rounded-full appearance-none cursor-pointer accent-stone-800"
+                          />
+                          <span className="text-xs text-stone-500">{groupQ.max}</span>
+                        </div>
+                        <div className="mt-2 text-lg font-bold text-stone-800">{additional[groupQ.name]}</div>
+                      </div>
+                    ) : groupQ.type === 'select' ? (
+                      <select
+                        value={additional[groupQ.name]}
+                        onChange={e => handleAdditionalChange(groupQ.name, e.target.value)}
+                        className="w-full border border-stone-300 rounded-xl px-4 py-3 text-stone-800 bg-white focus:ring-2 focus:ring-stone-500"
+                      >
+                        {groupQ.options.map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      /* number input */
+                      <div>
+                        <input
+                          type="number"
+                          min={groupQ.min}
+                          max={groupQ.max}
+                          step={groupQ.step}
+                          value={additional[groupQ.name]}
+                          onChange={e => handleAdditionalChange(groupQ.name, e.target.value)}
+                          className={`w-full border rounded-xl px-4 py-2 text-stone-800 focus:ring-2 focus:ring-stone-500 transition-all ${
+                            !groupCanProceed && additional[groupQ.name] !== '' ? 'border-red-400 bg-red-50' : 'border-stone-300'
+                          }`}
+                        />
+                        {!groupCanProceed && additional[groupQ.name] !== '' && (
+                          <p className="text-xs text-red-600 mt-1">
+                            {lang === 'th' ? `กรุณากรอกค่าระหว่าง ${groupQ.min} – ${groupQ.max}` : `Please enter a value between ${groupQ.min} and ${groupQ.max}.`}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                </AnimatePresence>
+
+                <div className="flex justify-between mt-8 pt-4 border-t border-stone-100">
+                  {currentStep > 0 ? (
+                    <button onClick={goBack} className="px-4 py-2 border border-stone-300 text-stone-700 rounded-full text-sm font-medium hover:bg-white/60 transition">
+                      {lang === 'th' ? '← ย้อนกลับ' : '← Back'}
+                    </button>
+                  ) : <div />}
+                  {currentStep < groupTotalSteps - 1 ? (
+                    <button onClick={goNext} disabled={!groupCanProceed}
+                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${groupCanProceed ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
+                      {lang === 'th' ? 'ถัดไป →' : 'Next →'}
+                    </button>
+                  ) : part3SubIndex < part3Groups.length - 1 ? (
+                    <button onClick={finishCurrentSubPart} disabled={!allGroupAnswered}
+                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allGroupAnswered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
+                      {lang === 'th' ? 'ส่วนถัดไป →' : 'Next Part →'}
+                    </button>
+                  ) : (
+                    <button onClick={handleSubmit} disabled={!allGroupAnswered || loading}
+                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allGroupAnswered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
+                      {loading ? (lang === 'th' ? 'กำลังส่ง...' : 'Submitting...') : (lang === 'th' ? 'ดูผลลัพธ์' : 'View Results')}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              /* All at once for this sub‑part */
+              <>
+                <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-6 pr-1">
+                  {groupFields.map((field, idx) => {
+                    const val = additional[field.name];
+                    const isValid = field.type === 'readonly' ? true :
+                      field.type === 'select' ? true :
+                      (val !== '' && val !== null && !isNaN(Number(val)) && Number(val) >= field.min && Number(val) <= field.max);
+                    return (
+                      <div key={field.name}>
+                        <h3 className="text-md font-serif font-semibold text-stone-800 mb-3">
+                          {idx + 1}. {lang === 'th' ? (field.labelTh || field.labelEn) : (field.labelEn || field.labelTh)}
+                        </h3>
+                        {field.type === 'readonly' ? (
+                          <div className="text-stone-700 text-center text-2xl font-bold">{val}</div>
+                        ) : field.type === 'slider' ? (
+                          <div className="flex flex-col items-center">
+                            <div className="w-full flex items-center gap-3">
+                              <span className="text-xs text-stone-500">{field.min}</span>
+                              <input
+                                type="range"
+                                min={field.min}
+                                max={field.max}
+                                step={field.step}
+                                value={val}
+                                onChange={e => handleAdditionalChange(field.name, Number(e.target.value))}
+                                className="flex-1 h-2 bg-stone-200 rounded-full appearance-none cursor-pointer accent-stone-800"
+                              />
+                              <span className="text-xs text-stone-500">{field.max}</span>
+                            </div>
+                            <div className="mt-1 text-lg font-bold text-stone-800">{val}</div>
+                          </div>
+                        ) : field.type === 'select' ? (
+                          <select
+                            value={val}
+                            onChange={e => handleAdditionalChange(field.name, e.target.value)}
+                            className="w-full border border-stone-300 rounded-xl px-4 py-2 text-stone-800 bg-white focus:ring-2 focus:ring-stone-500"
+                          >
+                            {field.options.map(opt => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div>
+                            <input
+                              type="number"
+                              min={field.min}
+                              max={field.max}
+                              step={field.step}
+                              value={val}
+                              onChange={e => handleAdditionalChange(field.name, e.target.value)}
+                              className={`w-full border rounded-xl px-4 py-2 text-stone-800 focus:ring-2 focus:ring-stone-500 transition-all ${
+                                !isValid && val !== '' ? 'border-red-400 bg-red-50' : 'border-stone-300'
+                              }`}
+                            />
+                            {!isValid && val !== '' && (
+                              <p className="text-xs text-red-600 mt-1">
+                                {lang === 'th' ? `กรุณากรอกค่าระหว่าง ${field.min} – ${field.max}` : `Please enter a value between ${field.min} and ${field.max}.`}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex justify-end mt-8 pt-4 border-t border-stone-100">
+                  {part3SubIndex < part3Groups.length - 1 ? (
+                    <button onClick={finishCurrentSubPart} disabled={!allGroupAnswered}
+                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allGroupAnswered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
+                      {lang === 'th' ? 'ส่วนถัดไป →' : 'Next Part →'}
+                    </button>
+                  ) : (
+                    <button onClick={handleSubmit} disabled={!allGroupAnswered || loading}
+                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${allGroupAnswered ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
+                      {loading ? (lang === 'th' ? 'กำลังส่ง...' : 'Submitting...') : (lang === 'th' ? 'ดูผลลัพธ์' : 'View Results')}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </motion.div>
       )}
 
-      {/* ---- Part 1 & 2 (question cards) ---- */}
+      {/* -------- Part 1 & 2 (question cards) -------- */}
       {(isPart1 || isPart2) && (
         <div className="max-w-lg mx-auto relative z-10">
           {/* Progress bar */}
@@ -420,7 +668,7 @@ export default function AssessmentForm() {
             </div>
           </div>
 
-          {/* Toggle – below the progress bar, right-aligned */}
+          {/* Toggle */}
           <div className="flex justify-end mb-4">
             <button
               onClick={() => setViewMode(v => v === 'single' ? 'all' : 'single')}
@@ -493,8 +741,8 @@ export default function AssessmentForm() {
                     </button>
                   ) : <div />}
                   {!isLastQ ? (
-                    <button onClick={goNext} disabled={!canProceed}
-                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${canProceed ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
+                    <button onClick={goNext} disabled={!answers[currentStep]}
+                      className={`px-6 py-2.5 rounded-full font-medium text-sm shadow-md transition ${answers[currentStep] ? 'bg-stone-800 text-white hover:bg-stone-700' : 'bg-stone-200 text-stone-400 cursor-not-allowed'}`}>
                       {lang === 'th' ? 'ถัดไป →' : 'Next →'}
                     </button>
                   ) : isPart1 ? (
