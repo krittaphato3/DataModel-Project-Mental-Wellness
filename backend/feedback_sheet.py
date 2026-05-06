@@ -11,7 +11,6 @@ def save_feedback(record: dict):
     creds_json = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
     if not creds_json:
         # Fallback to CSV
-        print("[feedback] No Google Sheets credentials found, using local CSV fallback.")
         import csv
         file_exists = os.path.isfile("feedback.csv")
         with open("feedback.csv", "a", newline="", encoding="utf-8") as f:
@@ -22,11 +21,11 @@ def save_feedback(record: dict):
         return
 
     try:
-        creds_dict = json.loads(creds_json)
+        cred_dict = json.loads(creds_json)
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(cred_dict, scope)
         client = gspread.authorize(creds)
-        sheet = client.open("TechWellnessFeedback").sheet1  # <-- change to your sheet name
+        sheet = client.open("TechWellnessFeedback").sheet1   # ← your sheet name
         row = [record.get(k, "") for k in ("timestamp", "rating", "comment", "predicted_values", "user_input")]
         sheet.append_row(row)
         print("[feedback] Saved to Google Sheets.")

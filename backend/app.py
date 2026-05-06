@@ -364,16 +364,49 @@ def root():
 
 
 @app.post("/feedback")
-def feedback(data: FeedbackRequest):
+def feedback(data: dict):   # accept any JSON body
     try:
-        record = {
-            "timestamp": datetime.now().isoformat(),
-            "rating": data.rating,
-            "comment": data.comment,
-            "predicted_values": json.dumps(data.predicted_values),
-            "user_input": json.dumps(data.user_input) if data.user_input else "",
-        }
-        save_feedback(record)
+        # Collect all keys we want in the sheet (ordered)
+        # We'll build a row dict with every key from the payload,
+        # plus a timestamp at the front.
+        record = {"timestamp": datetime.now().isoformat()}
+
+        # Merge all flat fields from the request
+        for key, value in data.items():
+            if key in ("rating", "comment"):
+                record[key] = value
+            else:
+                # question / prediction fields
+                record[key] = value
+
+        # If some fields are missing (older frontend), fill them with empty string
+        # We'll define the full column set we expect.
+        expected_columns = [
+            "timestamp", "rating", "comment",
+            "phq9_q1","phq9_q2","phq9_q3","phq9_q4","phq9_q5",
+            "phq9_q6","phq9_q7","phq9_q8","phq9_q9",
+            "gad7_q1","gad7_q2","gad7_q3","gad7_q4","gad7_q5",
+            "gad7_q6","gad7_q7",
+            "stress_score","poor_balance_high_stress",
+            "job_satisfaction_score","manager_support_score",
+            "autonomy_score","meetings_per_day","work_hours_per_week",
+            "deadline_pressure_score","work_life_balance_score",
+            "sleep_hours_per_night","exercise_days_per_week",
+            "vacation_days_taken","social_support_score",
+            "therapy_access","salary_usd",
+            "burnout_level","seeks_mental_health_support_score",
+            "seeks_mental_health_support","job_change_intention_score",
+            "job_change_intention",
+            "phq9_total","phq9_severity",
+            "gad7_total","gad7_severity",
+        ]
+
+        # Ensure every column exists
+        row = {}
+        for col in expected_columns:
+            row[col] = record.get(col, "")
+
+        save_feedback(row)
         return {"status": "success", "message": "Thank you!"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
