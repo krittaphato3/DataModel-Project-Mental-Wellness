@@ -73,7 +73,6 @@ class PHQ9Request(BaseModel):
 class AssessRequest(BaseModel):
     phq9_answers: List[int]
     gad7_answers: List[int]
-    # Part 3 fields
     stress_score: Optional[float] = None
     poor_balance_high_stress: Optional[float] = None
     job_satisfaction_score: Optional[float] = None
@@ -105,16 +104,23 @@ app.add_middleware(
 
 
 # ------------------------------------------------------------
-# Feature builder – supports both old UserInput and new dict
+# Map categorical strings to numeric
+# ------------------------------------------------------------
+def convert_categorical(raw: dict) -> dict:
+    """Replace Yes/No with 1/0 and ensure all values are numeric where needed."""
+    for key in raw:
+        if isinstance(raw[key], str):
+            if raw[key].lower() == 'yes':
+                raw[key] = 1
+            elif raw[key].lower() == 'no':
+                raw[key] = 0
+    return raw
+
+
+# ------------------------------------------------------------
+# Feature builder – supports both UserInput and dict
 # ------------------------------------------------------------
 def build_features(data, model):
-    """
-    data can be:
-      - UserInput (old /predict)
-      - dict with the 15 additional fields + phq9/gad7 scores
-    Build a DataFrame with exactly the feature names the model expects.
-    """
-    # Convert to dict
     if isinstance(data, UserInput):
         raw = {
             'age': data.age,
@@ -126,16 +132,26 @@ def build_features(data, model):
             'job_role': data.job_role,
             'toxic_workplace_exposure': data.toxic_workplace_exposure,
             'manager_support': data.manager_support,
-            'manager_support_score': data.manager_support,  # duplicate for new field name
+            'manager_support_score': data.manager_support,
         }
     else:
-        raw = dict(data)  # it's already a dict
+        raw = dict(data)
 
-    # Ensure common fields are present
-    for field in ['work_hours_per_week', 'meetings_per_day', 'sleep_hours_per_night',
-                  'toxic_workplace_exposure', 'manager_support', 'manager_support_score']:
-        if field not in raw:
-            raw[field] = 0
+    # Ensure all strings are numeric where needed
+    raw = convert_categorical(raw)
+
+    # Fill missing common fields
+    defaults = {
+        'work_hours_per_week': 40,
+        'meetings_per_day': 2,
+        'sleep_hours_per_night': 7,
+        'toxic_workplace_exposure': 5,
+        'manager_support': 5,
+        'manager_support_score': 5,
+    }
+    for k, v in defaults.items():
+        if k not in raw or raw[k] is None:
+            raw[k] = v
 
     # Get expected feature names
     expected = None
@@ -158,9 +174,12 @@ def build_features(data, model):
                 role = raw.get('job_role', 'Software Engineer')
                 feats[col] = 1 if col == f'job_role_{role}' else 0
             else:
-                # Unknown column – fill with 0
                 feats[col] = 0
-        return pd.DataFrame([feats])[expected]
+        df = pd.DataFrame([feats])[expected]
+        # Convert any remaining objects to numeric
+        for col in df.select_dtypes(include=['object']).columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        return df
 
     # Fallback 9-column
     loc_map = {"Remote": 0, "Hybrid": 1, "On-site": 2}
@@ -182,7 +201,7 @@ def build_features(data, model):
 
 
 # ------------------------------------------------------------
-# Single prediction helper – returns (result, error_message)
+# Single prediction helper
 # ------------------------------------------------------------
 def predict_model(model, raw_data, model_name, is_regression=False):
     if model is None:
@@ -201,7 +220,6 @@ def predict_model(model, raw_data, model_name, is_regression=False):
             if is_regression:
                 val = min(10, max(0, round(val, 1)))
                 return val, None
-            # binary classification without predict_proba
             label = 1 if val >= 0.5 else 0
             return (val, label), None
     except Exception as e:
@@ -209,7 +227,7 @@ def predict_model(model, raw_data, model_name, is_regression=False):
 
 
 # ------------------------------------------------------------
-# Robust /assess endpoint – returns per-model errors
+# /assess endpoint – robust with categorical conversion
 # ------------------------------------------------------------
 @app.post("/assess")
 def assess_endpoint(data: AssessRequest):
@@ -242,7 +260,7 @@ def assess_endpoint(data: AssessRequest):
     else:
         gad7_sev = "รุนแรง / Severe"
 
-    # Build a feature dictionary from the request
+    # Raw feature dict (all numeric, no strings)
     raw = {
         "phq9_score": phq9_total,
         "gad7_score": gad7_total,
@@ -259,9 +277,9 @@ def assess_endpoint(data: AssessRequest):
         "exercise_days_per_week": data.exercise_days_per_week,
         "vacation_days_taken": data.vacation_days_taken,
         "social_support_score": data.social_support_score,
-        "therapy_access": data.therapy_access,
+        "therapy_access": 1 if data.therapy_access == "Yes" else 0,   # numeric conversion
         "salary_usd": data.salary_usd,
-        # fallbacks for old UserInput fields (some models might expect them)
+        # fallbacks
         "toxic_workplace_exposure": data.poor_balance_high_stress or 5,
         "manager_support": data.manager_support_score or 5,
         "work_location": "Remote",
@@ -279,7 +297,7 @@ def assess_endpoint(data: AssessRequest):
     if burnout_err:
         warnings.append(burnout_err)
 
-    # Mental health support (binary)
+    # Mental health support
     mental_res, mental_err = predict_model(mental_support_model, raw, "mental_support", is_regression=False)
     if mental_res:
         score, label = mental_res
@@ -291,7 +309,7 @@ def assess_endpoint(data: AssessRequest):
     if mental_err:
         warnings.append(mental_err)
 
-    # Job change intention (binary)
+    # Job change intention
     change_res, change_err = predict_model(job_change_model, raw, "job_change", is_regression=False)
     if change_res:
         score, label = change_res
@@ -309,9 +327,7 @@ def assess_endpoint(data: AssessRequest):
     result["gad7_severity"] = gad7_sev
     result["warnings"] = warnings
 
-    # Print locally (will appear in Render logs if you look, but also returned to frontend)
     print(f"[assess] PHQ-9={phq9_total}, GAD-7={gad7_total}, warnings={warnings}")
-
     return result
 
 
