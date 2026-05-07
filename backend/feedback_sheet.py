@@ -1,8 +1,8 @@
 import requests
 from datetime import datetime
 
-# URL ของ Web App ที่เรา Deploy มาจาก Google Apps Script (อันที่เราเทสผ่านแล้ว)
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycby48yIsgq6D8JhLF_hyLUEsciy8ih-R7tw1QaLFiOgh6v3OpCPg9hq6H3UqUkqRyuA/exec"
+# URL ของ Web App ที่เรา Deploy มาจาก Google Apps Script (อัปเดตเป็นเวอร์ชัน 3 ล่าสุดแล้ว)
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxa8q6Bdq11yHWkj7sMNgITd3OQKhlOmqp4UAGO8CrjlHd07ozP9CUm72nMRuRENUU/exec"
 
 def save_to_google_sheet(user_data):
     """
@@ -41,4 +41,29 @@ def save_to_google_sheet(user_data):
 
     except Exception as e:
         print(f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อ Google Sheets: {e}")
+        return False
+
+def update_feedback_in_sheet(rating, comment):
+    """
+    ฟังก์ชันสำหรับส่ง Rating และ Comment ไปอัปเดตที่แถวล่าสุดใน Sheet
+    """
+    try:
+        # กำหนด action เป็น update_feedback เพื่อให้ Apps Script รู้ว่าเราแค่มาเติมคะแนน ไม่ได้สร้างแถวใหม่
+        payload = {
+            "action": "update_feedback",
+            "rating": rating,
+            "comment": comment
+        }
+        
+        response = requests.post(SCRIPT_URL, json=payload)
+        
+        if response.status_code == 200:
+            print("✅ บันทึก Feedback (ดาว + คอมเมนต์) ลงตารางสำเร็จ!")
+            return True
+        else:
+            print(f"❌ บันทึก Feedback ไม่สำเร็จ: Status Code {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อเพื่อส่ง Feedback: {e}")
         return False
