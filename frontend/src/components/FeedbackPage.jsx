@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { updateFeedback } from './api';
+import { updateFeedback } from '../api';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
