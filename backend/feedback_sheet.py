@@ -4,7 +4,7 @@ from datetime import datetime
 # =========================
 # Google Apps Script Web App URL
 # =========================
-SCRIPT_URL = "https://https://script.google.com/macros/s/AKfycbxjxdxpBvpm1Bb2uWh34BcpoBdRQNoe_Ve850nHLnk-nJrc1X9arhfGOwZ8l8CPpnA/exec"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzWDrYszL8OcPRl2fk6dnM-9iVqpy605oSJeWqmrByrrppOMiSbLoO3yx22xeYGYdk/exec"
 
 
 # =========================
