@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 # ดึงฟังก์ชันใหม่ที่เราเพิ่งสร้างมาใช้
 from feedback_sheet import save_to_google_sheet
-
+from feedback_sheet import save_to_google_sheet, update_feedback_in_sheet
 MODEL_DIR = "models"
 
 # ------------------------------------------------------------
@@ -317,9 +317,13 @@ class FeedbackSubmit(BaseModel):
 
 @app.post("/submit-feedback")
 def submit_feedback_endpoint(data: FeedbackSubmit):
-    # ปัจจุบันเราเก็บ 1 คนต่อ 1 แถวแล้ว จึงไม่ต้องวิ่งกลับไปอัปเดตบรรทัดเดิม 
-    # คืนค่า Success ไปเลย Frontend จะได้ขึ้นข้อความขอบคุณปกติ
-    return {"status": "success", "message": "Thank you!"}
+    # เรียกใช้ฟังก์ชันที่เราเพิ่งสร้างเพื่ออัปเดตลง Sheet
+    success = update_feedback_in_sheet(data.rating, data.comment)
+    
+    if success:
+        return {"status": "success", "message": "Thank you!"}
+    else:
+        raise HTTPException(status_code=500, detail="Could not save feedback")
 
 @app.post("/feedback")
 def feedback(data: dict):   
