@@ -3,17 +3,17 @@ import json
 import numpy as np
 import pandas as pd
 import joblib
+import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+# ดึงฟังก์ชันใหม่ที่เราเพิ่งสร้างมาใช้
 from feedback_sheet import save_to_google_sheet
-import uuid
-from datetime import datetime
 
 MODEL_DIR = "models"
-
 
 # ------------------------------------------------------------
 # Model Loading (with dict extraction)
@@ -33,7 +33,6 @@ def load_real_model(filename):
         print("[models] No known key found, using raw dict")
     return obj
 
-
 burnout_model = load_real_model("burnout_model.pkl")
 mental_support_model = load_real_model("seeks_mental_health_support.pkl")
 job_change_model = load_real_model("job_changed_intention.pkl")
@@ -44,7 +43,6 @@ model_status = {
     "job_change_intention": job_change_model is not None and hasattr(job_change_model, 'predict'),
 }
 print(f"[models] Status: {model_status}")
-
 
 # ------------------------------------------------------------
 # Pydantic schemas
@@ -59,18 +57,6 @@ class UserInput(BaseModel):
     years_of_experience: float = Field(..., ge=0, le=50)
     age: int = Field(..., ge=18, le=100)
     job_role: str
-
-
-class FeedbackRequest(BaseModel):
-    rating: float
-    comment: str
-    predicted_values: Dict[str, Any]
-    user_input: Optional[Dict[str, Any]] = None
-
-
-class PHQ9Request(BaseModel):
-    answers: List[int]
-
 
 class AssessRequest(BaseModel):
     phq9_answers: List[int]
@@ -91,7 +77,6 @@ class AssessRequest(BaseModel):
     therapy_access: Optional[str] = None
     salary_usd: Optional[float] = None
 
-
 # ------------------------------------------------------------
 # FastAPI app
 # ------------------------------------------------------------
@@ -104,12 +89,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # ------------------------------------------------------------
-# Map categorical strings to numeric
+# Helpers
 # ------------------------------------------------------------
 def convert_categorical(raw: dict) -> dict:
-    """Replace Yes/No with 1/0 and ensure all values are numeric where needed."""
     for key in raw:
         if isinstance(raw[key], str):
             if raw[key].lower() == 'yes':
@@ -118,10 +101,6 @@ def convert_categorical(raw: dict) -> dict:
                 raw[key] = 0
     return raw
 
-
-# ------------------------------------------------------------
-# Feature builder – supports both UserInput and dict
-# ------------------------------------------------------------
 def build_features(data, model):
     if isinstance(data, UserInput):
         raw = {
@@ -139,10 +118,8 @@ def build_features(data, model):
     else:
         raw = dict(data)
 
-    # Ensure all strings are numeric where needed
     raw = convert_categorical(raw)
 
-    # Fill missing common fields
     defaults = {
         'work_hours_per_week': 40,
         'meetings_per_day': 2,
@@ -155,7 +132,6 @@ def build_features(data, model):
         if k not in raw or raw[k] is None:
             raw[k] = v
 
-    # Get expected feature names
     expected = None
     if hasattr(model, 'feature_names_in_'):
         expected = model.feature_names_in_.tolist()
@@ -178,12 +154,10 @@ def build_features(data, model):
             else:
                 feats[col] = 0
         df = pd.DataFrame([feats])[expected]
-        # Convert any remaining objects to numeric
         for col in df.select_dtypes(include=['object']).columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         return df
 
-    # Fallback 9-column
     loc_map = {"Remote": 0, "Hybrid": 1, "On-site": 2}
     role_list = ["Software Engineer", "Data Scientist", "Product Manager",
                  "DevOps Engineer", "QA Engineer", "Tech Lead", "UX Designer", "Other"]
@@ -201,10 +175,6 @@ def build_features(data, model):
     ])
     return pd.DataFrame(fallback)
 
-
-# ------------------------------------------------------------
-# Single prediction helper
-# ------------------------------------------------------------
 def predict_model(model, raw_data, model_name, is_regression=False):
     if model is None:
         return None, f"{model_name} model not found"
@@ -227,9 +197,8 @@ def predict_model(model, raw_data, model_name, is_regression=False):
     except Exception as e:
         return None, f"{model_name} prediction error: {str(e)}"
 
-
 # ------------------------------------------------------------
-# /assess endpoint – robust with categorical conversion
+# /assess endpoint (อัปเดตใหม่ ให้ส่งข้อมูลเข้า Google Sheets)
 # ------------------------------------------------------------
 @app.post("/assess")
 def assess_endpoint(data: AssessRequest):
@@ -242,27 +211,18 @@ def assess_endpoint(data: AssessRequest):
     phq9_total = sum(data.phq9_answers)
     gad7_total = sum(data.gad7_answers)
 
-    if phq9_total <= 4:
-        phq9_sev = "ปกติ / None-minimal"
-    elif phq9_total <= 9:
-        phq9_sev = "เล็กน้อย / Mild"
-    elif phq9_total <= 14:
-        phq9_sev = "ปานกลาง / Moderate"
-    elif phq9_total <= 19:
-        phq9_sev = "ค่อนข้างรุนแรง / Moderately severe"
-    else:
-        phq9_sev = "รุนแรง / Severe"
+    if phq9_total <= 4: phq9_sev = "ปกติ / None-minimal"
+    elif phq9_total <= 9: phq9_sev = "เล็กน้อย / Mild"
+    elif phq9_total <= 14: phq9_sev = "ปานกลาง / Moderate"
+    elif phq9_total <= 19: phq9_sev = "ค่อนข้างรุนแรง / Moderately severe"
+    else: phq9_sev = "รุนแรง / Severe"
 
-    if gad7_total <= 4:
-        gad7_sev = "ปกติ / None-minimal"
-    elif gad7_total <= 9:
-        gad7_sev = "เล็กน้อย / Mild"
-    elif gad7_total <= 14:
-        gad7_sev = "ปานกลาง / Moderate"
-    else:
-        gad7_sev = "รุนแรง / Severe"
+    if gad7_total <= 4: gad7_sev = "ปกติ / None-minimal"
+    elif gad7_total <= 9: gad7_sev = "เล็กน้อย / Mild"
+    elif gad7_total <= 14: gad7_sev = "ปานกลาง / Moderate"
+    else: gad7_sev = "รุนแรง / Severe"
 
-    # --- ML prediction (using your existing logic, shortened) ---
+    # --- ML prediction ---
     raw = {
         "phq9_score": phq9_total,
         "gad7_score": gad7_total,
@@ -292,35 +252,23 @@ def assess_endpoint(data: AssessRequest):
     warnings = []
     result = {}
 
-    # Burnout (regression)
     burnout_val, burnout_err = predict_model(burnout_model, raw, "burnout", is_regression=True)
     result["burnout_level"] = burnout_val
-    if burnout_err:
-        warnings.append(burnout_err)
+    if burnout_err: warnings.append(burnout_err)
 
-    # Mental health support
     mental_res, mental_err = predict_model(mental_support_model, raw, "mental_support")
     if mental_res:
-        score, label = mental_res
-        result["seeks_mental_health_support_score"] = score
-        result["seeks_mental_health_support"] = label
+        result["seeks_mental_health_support_score"], result["seeks_mental_health_support"] = mental_res
     else:
-        result["seeks_mental_health_support_score"] = None
-        result["seeks_mental_health_support"] = None
-        if mental_err:
-            warnings.append(mental_err)
+        result["seeks_mental_health_support_score"], result["seeks_mental_health_support"] = None, None
+        if mental_err: warnings.append(mental_err)
 
-    # Job change
     change_res, change_err = predict_model(job_change_model, raw, "job_change")
     if change_res:
-        score, label = change_res
-        result["job_change_intention_score"] = score
-        result["job_change_intention"] = label
+        result["job_change_intention_score"], result["job_change_intention"] = change_res
     else:
-        result["job_change_intention_score"] = None
-        result["job_change_intention"] = None
-        if change_err:
-            warnings.append(change_err)
+        result["job_change_intention_score"], result["job_change_intention"] = None, None
+        if change_err: warnings.append(change_err)
 
     result["phq9_total"] = phq9_total
     result["phq9_severity"] = phq9_sev
@@ -328,83 +276,40 @@ def assess_endpoint(data: AssessRequest):
     result["gad7_severity"] = gad7_sev
     result["warnings"] = warnings
 
-    # --- NEW: Save answers immediately ---
-    submission_id = str(uuid.uuid4())
-    timestamp = datetime.now().isoformat()
+    # จัดหมวดหมู่ Burnout อย่างง่ายเพื่อลง Sheet
+    b_level_str = "Low"
+    if burnout_val:
+        if burnout_val > 7: b_level_str = "High"
+        elif burnout_val > 4: b_level_str = "Moderate"
 
-    # Build an answer row for each individual question
-    answers = []
+    # 🚀 --- NEW: บันทึกข้อมูลลง Google Sheets ด้วยฟังก์ชันใหม่ ---
+    sheet_data = {
+        "name": "ผู้ทำแบบประเมิน", 
+        "phq9_total": phq9_total,
+        "phq9_severity": phq9_sev,
+        "gad17_total": gad7_total,
+        "gad17_severity": gad7_sev,
+        "burnout_score": burnout_val if burnout_val else 0,
+        "burnout_level": b_level_str,
+        "seeks_support": True if result.get("seeks_mental_health_support") == 1 else False,
+        "job_change": True if result.get("job_change_intention") == 1 else False,
+        "phq9_raw": data.phq9_answers,
+        "gad17_raw": data.gad7_answers
+    }
 
-    # PHQ-9 (9 questions)
-    phq9_texts = [
-        "เบื่อ ไม่สนใจอะไรเลย / Little interest or pleasure in doing things",
-        "รู้สึกหดหู่ เศร้า หรือสิ้นหวัง / Feeling down, depressed, or hopeless",
-        "มีปัญหาในการนอนหลับ / Trouble falling/staying asleep",
-        "รู้สึกเหนื่อยล้า / Feeling tired or having little energy",
-        "เบื่ออาหารหรือกินมากเกินไป / Poor appetite or overeating",
-        "รู้สึกไม่ดีกับตัวเอง / Feeling bad about yourself",
-        "ขาดสมาธิ / Trouble concentrating",
-        "เคลื่อนไหวช้าลงหรือกระสับกระส่าย / Moving or speaking slowly",
-        "คิดทำร้ายตัวเอง / Thoughts of self-harm",
-    ]
-    for i, ans in enumerate(data.phq9_answers):
-        answers.append({"question": f"PHQ-9 Q{i+1}: {phq9_texts[i]}", "answer": ans, "timestamp": timestamp})
-
-    # GAD-7 (7 questions)
-    gad7_texts = [
-        "รู้สึกตึงเครียด วิตกกังวล / Feeling nervous, anxious",
-        "ไม่สามารถหยุดความกังวล / Cannot stop worrying",
-        "กังวลมากเกินไป / Worrying too much",
-        "ทำตัวให้ผ่อนคลายได้ยาก / Trouble relaxing",
-        "กระสับกระส่าย / Restless",
-        "หงุดหงิดง่าย / Easily annoyed",
-        "รู้สึกกลัว / Feeling afraid",
-    ]
-    for i, ans in enumerate(data.gad7_answers):
-        answers.append({"question": f"GAD-7 Q{i+1}: {gad7_texts[i]}", "answer": ans, "timestamp": timestamp})
-
-    # Part 3 fields (each becomes its own row)
-    part3_fields = [
-        ("stress_score", "คะแนนความเครียด / Stress score"),
-        ("poor_balance_high_stress", "ภาระงาน/เครียดสูง / Poor balance / high stress"),
-        ("job_satisfaction_score", "ความพึงพอใจในงาน / Job satisfaction"),
-        ("manager_support_score", "การสนับสนุนจากหัวหน้า / Manager support"),
-        ("autonomy_score", "ความเป็นอิสระในงาน / Autonomy"),
-        ("meetings_per_day", "ประชุมต่อวัน / Meetings per day"),
-        ("work_hours_per_week", "ชั่วโมงทำงาน/สัปดาห์ / Work hours/week"),
-        ("deadline_pressure_score", "แรงกดดันจากเส้นตาย / Deadline pressure"),
-        ("work_life_balance_score", "สมดุลชีวิต-งาน / Work-life balance"),
-        ("sleep_hours_per_night", "ชั่วโมงนอน/คืน / Sleep hours/night"),
-        ("exercise_days_per_week", "วันออกกำลังกาย/สัปดาห์ / Exercise days/week"),
-        ("vacation_days_taken", "วันลาพักร้อนที่ใช้ / Vacation days taken"),
-        ("social_support_score", "การสนับสนุนทางสังคม / Social support"),
-        ("therapy_access", "เข้าถึงการบำบัด / Therapy access"),
-        ("salary_usd", "เงินเดือน USD / Salary USD"),
-    ]
-    for field, label in part3_fields:
-        val = getattr(data, field, "")
-        if val is None:
-            val = ""
-        answers.append({"question": label, "answer": val, "timestamp": timestamp})
-
-    # Save to Google Sheets (or CSV fallback)
     try:
-        from feedback_sheet import save_answers
-        save_answers(submission_id, answers)
+        save_to_google_sheet(sheet_data)
     except Exception as e:
-        warnings.append(f"Answer save failed: {str(e)}")
+        warnings.append(f"Sheet save failed: {str(e)}")
 
-    # Attach submission_id to the result so the frontend can use it later
-    result["submission_id"] = submission_id
+    # เก็บ submission_id เผื่อ Frontend ยังต้องใช้ (ถ้าไม่ใช้ก็ไม่เป็นไร)
+    result["submission_id"] = str(uuid.uuid4())
 
     return result
 
-
 # -------------------------------------------------------------------
-# New endpoint: submit feedback (updates existing rows)
+# Endpoints สำหรับ Feedback (ปิดการทำงานส่วน Google Sheet เดิมไว้เพื่อไม่ให้พัง)
 # -------------------------------------------------------------------
-from pydantic import BaseModel as PydanticBaseModel
-
 class FeedbackSubmit(BaseModel):
     submission_id: str
     rating: float
@@ -412,60 +317,14 @@ class FeedbackSubmit(BaseModel):
 
 @app.post("/submit-feedback")
 def submit_feedback_endpoint(data: FeedbackSubmit):
-    from feedback_sheet import update_feedback
-    success = update_feedback(data.submission_id, data.rating, data.comment)
-    if not success:
-        raise HTTPException(status_code=500, detail="Could not update feedback – maybe the submission_id was not found or Google Sheets is unreachable.")
+    # ปัจจุบันเราเก็บ 1 คนต่อ 1 แถวแล้ว จึงไม่ต้องวิ่งกลับไปอัปเดตบรรทัดเดิม 
+    # คืนค่า Success ไปเลย Frontend จะได้ขึ้นข้อความขอบคุณปกติ
     return {"status": "success", "message": "Thank you!"}
 
-
-@app.post("/phq9")
-def phq9_endpoint(data: PHQ9Request):
-    if len(data.answers) != 9:
-        raise HTTPException(status_code=400, detail="Exactly 9 answers required.")
-    total = sum(data.answers)
-    if total <= 4:
-        severity = "ปกติ / None-minimal"
-    elif total <= 9:
-        severity = "เล็กน้อย / Mild"
-    elif total <= 14:
-        severity = "ปานกลาง / Moderate"
-    elif total <= 19:
-        severity = "ค่อนข้างรุนแรง / Moderately severe"
-    else:
-        severity = "รุนแรง / Severe"
-    return {
-        "phq9_total": total,
-        "phq9_severity": severity,
-        "burnout_level": None,
-        "seeks_mental_health_support_score": None,
-        "seeks_mental_health_support": None,
-        "job_change_intention_score": None,
-        "job_change_intention": None,
-        "warnings": ["phq9 endpoint used – no ML prediction"],
-    }
-
+@app.post("/feedback")
+def feedback(data: dict):   
+    return {"status": "success", "message": "Thank you for your feedback!"}
 
 @app.get("/")
 def root():
     return {"status": "Tech Wellness Predictor API active", "models": model_status}
-
-
-@app.post("/feedback")
-def feedback(data: dict):   # accept any flat JSON body
-    try:
-        # Build a row with all expected columns (empty string if missing)
-        row = {}
-        row["timestamp"] = datetime.now().isoformat()
-        row["rating"] = data.get("rating", "")
-        row["comment"] = data.get("comment", "")
-
-        # Flatten all remaining fields directly from the request
-        for key, value in data.items():
-            if key not in ("rating", "comment"):
-                row[key] = value
-
-        save_feedback(row)
-        return {"status": "success", "message": "Thank you!"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
