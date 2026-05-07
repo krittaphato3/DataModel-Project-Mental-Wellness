@@ -2,7 +2,7 @@ import requests
 from datetime import datetime
 
 # URL ของ Web App ที่เรา Deploy มาจาก Google Apps Script (อัปเดตเป็นเวอร์ชัน 3 ล่าสุดแล้ว)
-SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxa8q6Bdq11yHWkj7sMNgITd3OQKhlOmqp4UAGO8CrjlHd07ozP9CUm72nMRuRENUU/exec"
+SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz2Pd3nhNgwj9_KlVp3kI867IsC4l2VllXWyuDtlaDEd2YI5fi8VHX3aui4CBlQ6vM/exec"
 
 def save_to_google_sheet(user_data):
     """
