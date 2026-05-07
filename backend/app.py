@@ -328,3 +328,28 @@ def feedback(data: dict):
 @app.get("/")
 def root():
     return {"status": "Tech Wellness Predictor API active", "models": model_status}
+
+# -------------------------------------------------------------------
+# Endpoints สำหรับ Feedback 
+# -------------------------------------------------------------------
+class FeedbackSubmit(BaseModel):
+    submission_id: str
+    rating: float
+    comment: str = ""
+
+@app.post("/submit-feedback")
+def submit_feedback_endpoint(data: FeedbackSubmit):
+    from feedback_sheet import update_feedback_in_sheet
+    # สั่งให้วิ่งไปอัปเดตชีท
+    update_feedback_in_sheet(data.rating, data.comment)
+    return {"status": "success", "message": "Thank you!"}
+
+@app.post("/feedback")
+def feedback(data: dict):   
+    from feedback_sheet import update_feedback_in_sheet
+    # ดักไว้เผื่อหน้าเว็บ React ยิงข้อมูลมาที่เส้นทางนี้แทน
+    rating = data.get("rating", 0)
+    comment = data.get("comment", "")
+    # สั่งให้วิ่งไปอัปเดตชีท
+    update_feedback_in_sheet(rating, comment)
+    return {"status": "success", "message": "Thank you for your feedback!"}
