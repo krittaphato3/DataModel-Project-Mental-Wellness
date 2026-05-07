@@ -6,7 +6,6 @@ import joblib
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -24,9 +23,7 @@ def load_real_model(filename):
     if not os.path.exists(path):
         print(f"[models] File not found: {path}")
         return None
-
     obj = joblib.load(path)
-
     if isinstance(obj, dict):
         print(f"[models] Loaded dict from {filename}, searching inside...")
         for key in ['model', 'classifier', 'pipeline', 'estimator']:
@@ -36,10 +33,6 @@ def load_real_model(filename):
 
         print("[models] No known key found, using raw dict")
         return obj
-
-    return obj
-
-
 burnout_model = load_real_model("burnout_model.pkl")
 mental_support_model = load_real_model("seeks_mental_health_support.pkl")
 job_change_model = load_real_model("job_changed_intention.pkl")
@@ -380,8 +373,3 @@ def feedback(data: dict):
     comment = data.get("comment", "")
     update_feedback_in_sheet(rating, comment)
     return {"status": "success", "message": "Thank you for your feedback!"}
-
-
-@app.get("/")
-def root():
-    return {"status": "Tech Wellness Predictor API active", "models": model_status}
