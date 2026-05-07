@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from feedback_sheet import save_feedback
+from feedback_sheet import save_to_google_sheet
 import uuid
 from datetime import datetime
 
