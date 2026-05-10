@@ -1,4 +1,4 @@
-# 🌿 Working with Healthy Mind – Tech Wellness Predictor
+# 🌿 Working with Healthy Mind
 
 > **CPE 232 Data Models Project** | Mental Health & Burnout Prediction for Tech Professionals
 
